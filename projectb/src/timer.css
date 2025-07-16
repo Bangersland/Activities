@@ -1,0 +1,94 @@
+*{
+    background-color: black;
+}
+.timer-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 40px;
+}
+
+.top-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 30px;
+  border: 2px solid #1d56a0;
+  padding: 10px;
+  border-radius: 5px;
+}
+
+.input-field {
+  width: 200px;
+}
+
+.cards-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: center;
+  max-width: 800px;
+}
+
+.timer-card {
+  width: 150px;
+  height: 120px;
+  border-radius: 8px;
+  padding: 15px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
+}
+
+.timer-card.blue {
+    background-color: transparent; /* or remove this line for default */
+  border: 3px solid #29548b;
+  color: #1f2a38;
+}
+
+.timer-card.red {
+  background-color: transparent; /* or remove this line for default */
+  border: 2px solid #dc3545;
+  color: #dc3545;
+}
+
+.timer-value {
+  font-size: 2rem;
+  font-weight: bold;
+  color: white;
+}
+
+.timer-buttons {
+  display: flex;
+  justify-content: space-between;
+}
+.delete-btn {
+  position: absolute;
+  top: 5px;
+  right: 7px;
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 1.2rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.timer-card {
+  position: relative; /* So the delete button is positioned correctly */
+  width: 150px;
+  height: 120px;
+  border-radius: 8px;
+  padding: 15px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
+}
+.top-input .btn {
+  white-space: nowrap; /* Ensure button text stays in one line */
+}
+
