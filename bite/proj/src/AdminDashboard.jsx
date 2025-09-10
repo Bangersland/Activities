@@ -14,7 +14,6 @@ import { FaTachometerAlt, FaCalendarCheck, FaUsers, FaMoneyBill, FaUser, FaUserM
 import { supabase } from './supabase';
 import logoImage from './assets/logo1.png';
 
-// eslint-disable-next-line no-unused-vars
 const AdminDashboard = ({ onLogout }) => {
   const [activeSection, setActiveSection] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);

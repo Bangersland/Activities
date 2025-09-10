@@ -73,7 +73,7 @@ const Schedule = () => {
   const handleAddSlots = async () => {
     try {
       setLoading(true);
-      const { data, error } = await createAppointmentSlots(selectedDate, formData.availableSlots);
+      const { error } = await createAppointmentSlots(selectedDate, formData.availableSlots);
       
       if (error) {
         setMessage(`Error creating slots: ${error.message}`);
@@ -97,7 +97,7 @@ const Schedule = () => {
     try {
       setLoading(true);
 
-      const { data, error } = await updateAppointmentSlots(
+      const { error } = await updateAppointmentSlots(
         selectedSlotData.date,
         editFormData.availableSlots,
         selectedSlotData.remaining_slots // Keep existing remaining slots
@@ -161,11 +161,7 @@ const Schedule = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   };
 
-  const goToToday = () => {
-    const today = new Date();
-    setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
-    setSelectedDate(today.toISOString().split('T')[0]);
-  };
+
 
   const generateCalendarDays = () => {
     const days = [];
@@ -541,6 +537,69 @@ const Schedule = () => {
           </div>
         </div>
       </div>
+      )}
+
+      {/* Details Modal */}
+      {isDetailsModalOpen && selectedSlotData && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-container">
+              <div className="modal-header">
+                <div className="modal-title">
+                  <h3>Slot Details</h3>
+                </div>
+                <p className="modal-subtitle">Appointment slot information for {selectedSlotData.date}</p>
+                <button onClick={() => setIsDetailsModalOpen(false)} className="close-btn">
+                  ×
+                </button>
+              </div>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label>Date:</label>
+                  <div className="info-box">
+                    <span className="info-icon">📅</span>
+                    <span className="info-content">{selectedSlotData.date}</span>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Available Slots:</label>
+                  <div className="info-box">
+                    <span className="info-icon">🎯</span>
+                    <span className="info-content">{selectedSlotData.available_slots}</span>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Remaining Slots:</label>
+                  <div className="info-box">
+                    <span className="info-icon">📊</span>
+                    <span className="info-content">{selectedSlotData.remaining_slots}</span>
+                  </div>
+                </div>
+                {slotPercentage && (
+                  <div className="form-group">
+                    <label>Slot Utilization:</label>
+                    <div className="info-box">
+                      <span className="info-icon">📈</span>
+                      <span className="info-content">{slotPercentage.percentage}% ({slotPercentage.used_slots} of {slotPercentage.total_slots} slots used)</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button onClick={() => setIsDetailsModalOpen(false)} className="cancel-btn">
+                  Close
+                </button>
+                <button 
+                  onClick={() => openEditModal(selectedSlotData)}
+                  className="save-btn"
+                >
+                  <FaEdit style={{ color: 'white' }} />
+                  Edit Slots
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       <style jsx>{`

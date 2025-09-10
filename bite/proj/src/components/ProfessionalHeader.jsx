@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaUser, FaSignOutAlt, FaClock, FaCalendarAlt, FaCog } from 'react-icons/fa';
+import { FaUser, FaSignOutAlt, FaCalendarAlt } from 'react-icons/fa';
 import { supabase } from '../supabase';
 
 const ProfessionalHeader = ({ user, onLogout }) => {

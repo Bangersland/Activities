@@ -31,7 +31,7 @@ const Map = () => {
         map.remove();
       }
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const initializeMap = () => {
     if (!window.L) return;

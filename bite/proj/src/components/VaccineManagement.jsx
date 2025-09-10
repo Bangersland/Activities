@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { FaPlus, FaEdit, FaTrash, FaTimes, FaSyringe } from 'react-icons/fa';
 import { getVaccines, createVaccine, updateVaccine, deleteVaccine } from '../supabase';
+
 
 const VaccineManagement = () => {
   const [vaccines, setVaccines] = useState([]);
@@ -16,14 +17,6 @@ const VaccineManagement = () => {
   });
   const [alerts, setAlerts] = useState([]);
   const [showAlerts, setShowAlerts] = useState(false);
-
-  useEffect(() => {
-    fetchVaccines();
-  }, []);
-
-  useEffect(() => {
-    checkForAlerts();
-  }, [vaccines]);
 
   const fetchVaccines = async () => {
     try {
@@ -166,9 +159,8 @@ const VaccineManagement = () => {
     return expiry < today;
   };
 
-  const checkForAlerts = () => {
+  const checkForAlerts = useCallback(() => {
     const newAlerts = [];
-    
     vaccines.forEach(vaccine => {
       // Check for low stock (20 or less)
       if (vaccine.stock_quantity <= 20 && vaccine.stock_quantity > 0) {
@@ -216,11 +208,19 @@ const VaccineManagement = () => {
     });
     
     setAlerts(newAlerts);
-  };
+  }, [vaccines]);
 
   const dismissAlert = (alertId) => {
     setAlerts(prevAlerts => prevAlerts.filter(alert => alert.id !== alertId));
   };
+
+  useEffect(() => {
+    fetchVaccines();
+  }, []);
+
+  useEffect(() => {
+    checkForAlerts();
+  }, [checkForAlerts]);
 
   return (
     <div className="content-section">
@@ -529,7 +529,7 @@ const VaccineManagement = () => {
         </div>
       )}
 
-      <style jsx>{`
+      <style>{`
         .message {
           padding: 12px 16px;
           border-radius: 8px;
@@ -1154,4 +1154,4 @@ const VaccineManagement = () => {
   );
 };
 
-export default VaccineManagement; 
+export default VaccineManagement;
