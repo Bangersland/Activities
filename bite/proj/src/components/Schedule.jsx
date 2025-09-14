@@ -2,16 +2,26 @@ import React, { useState, useEffect } from 'react';
 import { FaCalendarAlt, FaPlus, FaTimes, FaInfoCircle, FaEdit, FaTrash } from 'react-icons/fa';
 import { 
   getAppointmentSlots, 
-  getAppointmentSlotsByDate, 
   createAppointmentSlots, 
   updateAppointmentSlots, 
-  deleteAppointmentSlots,
-  getSlotPercentage 
+  deleteAppointmentSlots, 
+  getSlotPercentage, 
+  bookAppointment, 
+  cancelAppointment, 
+  getAppointmentCountByDate 
 } from '../supabase';
+import SlotMetricsDisplay from './SlotMetricsDisplay';
+import SlotInfoDisplay from './SlotInfoDisplay';
 
 const Schedule = () => {
-  const [selectedDate, setSelectedDate] = useState('2025-08-15');
-  const [currentDate, setCurrentDate] = useState(new Date(2025, 7, 1)); // August 2025
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
+  const [currentDate, setCurrentDate] = useState(new Date());
   const [appointmentSlots, setAppointmentSlots] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -30,6 +40,12 @@ const Schedule = () => {
   // Fetch all appointment slots on component mount
   useEffect(() => {
     fetchAppointmentSlots();
+    // Set up real-time updates for slot changes
+    const interval = setInterval(() => {
+      fetchAppointmentSlots();
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
   }, []);
 
   const fetchAppointmentSlots = async () => {
@@ -53,21 +69,8 @@ const Schedule = () => {
 
   const handleDateClick = async (date) => {
     setSelectedDate(date);
-    
-    // Check if slots exist for this date
-    const { data: existingSlot } = await getAppointmentSlotsByDate(date);
-    
-    if (existingSlot) {
-      // Show details modal
-      setSelectedSlotData(existingSlot);
-      
-      // Get percentage data
-      const { data: percentageData } = await getSlotPercentage(date);
-      setSlotPercentage(percentageData);
-      
-      setIsDetailsModalOpen(true);
-    }
-    // Remove the automatic modal opening - only show when "Add Slots" is clicked
+    // Refresh slot data when date is selected to show current booking status
+    await fetchAppointmentSlots();
   };
 
   const handleAddSlots = async () => {
@@ -99,8 +102,7 @@ const Schedule = () => {
 
       const { error } = await updateAppointmentSlots(
         selectedSlotData.date,
-        editFormData.availableSlots,
-        selectedSlotData.remaining_slots // Keep existing remaining slots
+        editFormData.availableSlots
       );
       
       if (error) {
@@ -124,14 +126,19 @@ const Schedule = () => {
   const handleDeleteSlots = async () => {
     try {
       setLoading(true);
-      const { error } = await deleteAppointmentSlots(selectedSlotData.date);
+      const slotInfo = getSlotInfo(selectedDate);
+      if (!slotInfo) {
+        setMessage('No slots found for the selected date');
+        return;
+      }
+      
+      const { error } = await deleteAppointmentSlots(slotInfo.date);
       
       if (error) {
         setMessage(`Error deleting slots: ${error.message}`);
       } else {
         setMessage('✅ Slots deleted successfully!');
         await fetchAppointmentSlots();
-        setIsDetailsModalOpen(false);
         
         // Auto-close success message
         setTimeout(() => setMessage(''), 3000);
@@ -161,7 +168,55 @@ const Schedule = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   };
 
+  // Helper functions for appointment slots
+  const formatDate = (date) => {
+    // Handle both Date objects and date strings
+    if (typeof date === 'string') {
+      return date;
+    }
+    // Use local date to avoid timezone offset issues
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
+  const hasSlots = (date) => {
+    const dateStr = formatDate(date);
+    return appointmentSlots.some(slot => slot.date === dateStr);
+  };
+
+  const getSlotInfo = (date) => {
+    return appointmentSlots.find(slot => slot.date === date);
+  };
+
+  const getBookedCount = async (date) => {
+    const { count } = await getAppointmentCountByDate(date);
+    return count;
+  };
+
+  const getSlotMetrics = async (slotInfo) => {
+    if (!slotInfo) return null;
+    
+    const bookedCount = await getBookedCount(slotInfo.date);
+    const availableSlots = slotInfo.available_slots || 0;
+    const remainingSlots = Math.max(0, availableSlots - bookedCount);
+    const percentage = availableSlots > 0 ? Math.round((bookedCount / availableSlots) * 100) : 0;
+    
+    return {
+      available: availableSlots,
+      booked: bookedCount,
+      remaining: remainingSlots,
+      percentage
+    };
+  };
+
+  const isToday = (date) => {
+    const today = new Date();
+    return date.getDate() === today.getDate() && 
+           date.getMonth() === today.getMonth() && 
+           date.getFullYear() === today.getFullYear();
+  };
 
   const generateCalendarDays = () => {
     const days = [];
@@ -177,7 +232,7 @@ const Schedule = () => {
     
     // Add current month's days
     for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-      const isSelected = date.toISOString().split('T')[0] === selectedDate;
+      const isSelected = formatDate(date) === selectedDate;
       days.push({ date: new Date(date), isCurrentMonth: true, isSelected });
     }
     
@@ -192,28 +247,6 @@ const Schedule = () => {
   };
 
   const calendarDays = generateCalendarDays();
-
-  // Helper functions for appointment slots
-  const formatDate = (date) => {
-    return date.toISOString().split('T')[0];
-  };
-
-  const hasSlots = (date) => {
-    const dateStr = formatDate(date);
-    return appointmentSlots.some(slot => slot.date === dateStr);
-  };
-
-  const getSlotInfo = (date) => {
-    const dateStr = formatDate(date);
-    return appointmentSlots.find(slot => slot.date === dateStr);
-  };
-
-  const isToday = (date) => {
-    const today = new Date();
-    return date.getDate() === today.getDate() && 
-           date.getMonth() === today.getMonth() && 
-           date.getFullYear() === today.getFullYear();
-  };
 
   const getCurrentMonthName = () => {
     return currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -267,7 +300,7 @@ const Schedule = () => {
                     } ${day.isSelected ? 'selected' : ''} ${
                         hasSlot ? 'has-slots' : ''
                       } ${today ? 'today' : ''}`}
-                      onClick={() => handleDateClick(day.date.toISOString().split('T')[0])}
+                      onClick={() => handleDateClick(formatDate(day.date))}
                   >
                     {day.date.getDate()}
                       {hasSlot && slotInfo && (
@@ -301,39 +334,19 @@ const Schedule = () => {
         <div className="slots-panel">
           <h3>Slots for {selectedDate}</h3>
           {(() => {
-            const slotInfo = getSlotInfo(new Date(selectedDate));
+            const slotInfo = getSlotInfo(selectedDate);
             if (slotInfo) {
               return (
                 <div className="slots-details">
                   <div className="slot-percentage">
-                    <h4>Capacity: {slotInfo.available_slots - slotInfo.remaining_slots}/{slotInfo.available_slots} slots filled</h4>
-                    <div className="percentage-display">
-                      {Math.round(((slotInfo.available_slots - slotInfo.remaining_slots) / slotInfo.available_slots) * 100)}%
-                    </div>
-                    <div className="progress-bar">
-                      <div 
-                        className="progress-fill" 
-                        style={{ width: `${((slotInfo.available_slots - slotInfo.remaining_slots) / slotInfo.available_slots) * 100}%` }}
-                      ></div>
-                    </div>
+                    <SlotMetricsDisplay slotInfo={slotInfo} />
                   </div>
                   <div className="slot-info">
-                    <div className="info-item">
-                      <label>Available Slots:</label>
-                      <span>{slotInfo.available_slots}</span>
-                    </div>
-                    <div className="info-item">
-                      <label>Remaining Slots:</label>
-                      <span>{slotInfo.remaining_slots}</span>
-                    </div>
-                    <div className="info-item">
-                      <label>Filled Slots:</label>
-                      <span>{slotInfo.available_slots - slotInfo.remaining_slots}</span>
-                    </div>
+                    <SlotInfoDisplay slotInfo={slotInfo} />
                   </div>
                   <div className="slot-actions">
-                                         <button 
-                       className="btn-primary"
+                     <button 
+                       className="btn-primary slot-action-btn"
                        onClick={() => openEditModal(slotInfo)}
                        disabled={loading}
                      >
@@ -341,11 +354,18 @@ const Schedule = () => {
                        Edit Slots
                      </button>
                      <button 
-                       className="btn-danger"
+                       className="btn-danger slot-action-btn"
                        onClick={handleDeleteSlots}
                        disabled={loading}
                      >
-                       {loading ? 'Deleting...' : <><FaTrash style={{ color: 'white' }} /> Delete Slots</>}
+                       {loading ? (
+                         'Deleting...'
+                       ) : (
+                         <>
+                           <FaTrash style={{ color: 'white' }} />
+                           Delete Slots
+                         </>
+                       )}
                      </button>
                   </div>
                 </div>
@@ -496,19 +516,14 @@ const Schedule = () => {
                  </div>
                                  <div className="slot-summary">
                    <div className="summary-item">
-                     <span>Current Remaining Slots:</span>
-                     <span className="remaining-count">{selectedSlotData.remaining_slots}</span>
-                   </div>
-                   <div className="summary-item">
-                     <span>Filled Slots:</span>
-                     <span className="filled-count">{selectedSlotData.available_slots - selectedSlotData.remaining_slots}</span>
+                     <span>Available Slots:</span>
+                     <span className="remaining-count">{selectedSlotData.available_slots || 0}</span>
                    </div>
                  </div>
                                  <div className="info-box">
                    <div className="info-icon">ℹ️</div>
                    <div className="info-content">
-                     <strong>Note:</strong> Only the total available slots can be modified. 
-                     Remaining slots will be automatically adjusted based on current bookings.
+                     <strong>Note:</strong> Only the total available slots can be modified.
                    </div>
                  </div>
               </div>
@@ -568,13 +583,6 @@ const Schedule = () => {
                     <span className="info-content">{selectedSlotData.available_slots}</span>
                   </div>
                 </div>
-                <div className="form-group">
-                  <label>Remaining Slots:</label>
-                  <div className="info-box">
-                    <span className="info-icon">📊</span>
-                    <span className="info-content">{selectedSlotData.remaining_slots}</span>
-                  </div>
-                </div>
                 {slotPercentage && (
                   <div className="form-group">
                     <label>Slot Utilization:</label>
@@ -602,7 +610,7 @@ const Schedule = () => {
         </div>
       )}
 
-      <style jsx>{`
+      <style jsx="true">{`
         .message {
           padding: 12px 16px;
           border-radius: 8px;
@@ -717,7 +725,6 @@ const Schedule = () => {
           font-size: 24px;
           font-weight: 700;
           color: #3b82f6;
-          text-align: center;
           margin-bottom: 12px;
         }
 
@@ -759,19 +766,30 @@ const Schedule = () => {
         .slot-actions {
           display: flex;
           gap: 12px;
-          margin-top: 20px;
+          margin-top: 24px;
+          justify-content: stretch;
+          align-items: flex-start;
+        }
+
+        .slot-action-btn {
+          flex: 1;
+          min-width: 120px;
+          height: 42px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          border-radius: 8px;
+          transition: all 0.2s ease;
         }
 
         .btn-primary {
           background: #3b82f6;
           color: white;
           border: none;
-          border-radius: 6px;
-          padding: 10px 20px;
           cursor: pointer;
-          font-size: 14px;
-          font-weight: 500;
-          flex: 1;
           transition: all 0.2s ease;
         }
 
@@ -784,18 +802,26 @@ const Schedule = () => {
           background: #ef4444;
           color: white;
           border: none;
-          border-radius: 6px;
-          padding: 10px 20px;
           cursor: pointer;
-          font-size: 14px;
-          font-weight: 500;
-          flex: 1;
           transition: all 0.2s ease;
+          margin-top:14px;
         }
 
         .btn-danger:hover {
           background: #dc2626;
           transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-primary:disabled,
+        .btn-danger:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none;
+        }
+
+        .btn-primary:hover {
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
         }
 
         .slot-summary {

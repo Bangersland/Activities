@@ -614,8 +614,7 @@ export const createAppointmentSlots = async (date, availableSlots = 40) => {
       .from('appointment_slots')
       .insert({
         date: date,
-        available_slots: availableSlots,
-        remaining_slots: availableSlots
+        available_slots: availableSlots
       })
       .select()
       .single();
@@ -634,15 +633,14 @@ export const createAppointmentSlots = async (date, availableSlots = 40) => {
 };
 
 // Function to update appointment slots
-export const updateAppointmentSlots = async (date, availableSlots, remainingSlots) => {
+export const updateAppointmentSlots = async (date, availableSlots) => {
   try {
     console.log('Updating appointment slots for date:', date);
     
     const { data, error } = await supabase
       .from('appointment_slots')
       .update({
-        available_slots: availableSlots,
-        remaining_slots: remainingSlots
+        available_slots: availableSlots
       })
       .eq('date', date)
       .select()
@@ -684,6 +682,134 @@ export const deleteAppointmentSlots = async (date) => {
   }
 };
 
+// Function to book an appointment
+export const bookAppointment = async (appointmentData) => {
+  try {
+    console.log('Booking appointment:', appointmentData);
+    
+    // Check if slots are configured for the date
+    const { data: slotData, error: slotError } = await getAppointmentSlotsByDate(appointmentData.appointment_date);
+    
+    if (slotError || !slotData) {
+      return { data: null, error: { message: 'No slots configured for this date' } };
+    }
+    
+    // Check current appointment count
+    const { count: currentBookings } = await getAppointmentCountByDate(appointmentData.appointment_date);
+    
+    if (currentBookings >= slotData.available_slots) {
+      return { data: null, error: { message: 'No available slots for this date' } };
+    }
+    
+    // Book the appointment
+    const { data: appointmentResult, error: appointmentError } = await supabase
+      .from('appointments')
+      .insert(appointmentData)
+      .select()
+      .single();
+    
+    if (appointmentError) {
+      console.error('Error booking appointment:', appointmentError);
+      return { data: null, error: appointmentError };
+    }
+    
+    console.log('Appointment booked successfully');
+    return { data: appointmentResult, error: null };
+    
+  } catch (error) {
+    console.error('Error in bookAppointment:', error);
+    return { data: null, error };
+  }
+};
+
+// Function to cancel an appointment
+export const cancelAppointment = async (appointmentId) => {
+  try {
+    console.log('Cancelling appointment:', appointmentId);
+    
+    // Delete the appointment
+    const { error: deleteError } = await supabase
+      .from('appointments')
+      .delete()
+      .eq('id', appointmentId);
+    
+    if (deleteError) {
+      console.error('Error cancelling appointment:', deleteError);
+      return { error: deleteError };
+    }
+    
+    console.log('Appointment cancelled successfully');
+    return { error: null };
+    
+  } catch (error) {
+    console.error('Error in cancelAppointment:', error);
+    return { error };
+  }
+};
+
+// Function to get appointment count for a specific date
+export const getAppointmentCountByDate = async (date) => {
+  try {
+    const { data, error } = await supabase
+      .from('appointments')
+      .select('id')
+      .eq('appointment_date', date);
+
+    if (error) {
+      console.error('Error getting appointment count:', error);
+      return { count: 0, error };
+    }
+
+    return { count: data?.length || 0, error: null };
+  } catch (error) {
+    console.error('Error in getAppointmentCountByDate:', error);
+    return { count: 0, error };
+  }
+};
+
+// Function to get all appointments
+export const getAllAppointments = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('appointments')
+      .select('*')
+      .order('appointment_date', { ascending: true });
+
+    if (error) {
+      console.error('Error getting appointments:', error);
+      return { data: [], error };
+    }
+
+    return { data: data || [], error: null };
+  } catch (error) {
+    console.error('Error in getAllAppointments:', error);
+    return { data: [], error };
+  }
+};
+
+// Function to confirm an appointment
+export const confirmAppointment = async (appointmentId) => {
+  try {
+    const { data, error } = await supabase
+      .from('appointments')
+      .update({ status: 'confirmed' })
+      .eq('id', appointmentId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error confirming appointment:', error);
+      return { data: null, error };
+    }
+
+    console.log('Appointment confirmed successfully:', data);
+    return { data, error: null };
+  } catch (error) {
+    console.error('Error in confirmAppointment:', error);
+    return { data: null, error };
+  }
+};
+
 // Function to get slot percentage for a date
 export const getSlotPercentage = async (date) => {
   try {
@@ -699,6 +825,26 @@ export const getSlotPercentage = async (date) => {
   } catch (error) {
     console.error('Error getting slot percentage:', error);
     return { data: null, error };
+  }
+};
+
+// Function to send notification to patient (placeholder for now)
+export const sendPatientNotification = async (patientId, message, type = 'appointment_confirmed') => {
+  try {
+    // This would integrate with your notification system
+    // For now, we'll just log it
+    console.log('Sending notification to patient:', { patientId, message, type });
+    
+    // In a real implementation, this might:
+    // - Send an email
+    // - Send an SMS
+    // - Create a push notification
+    // - Insert into a notifications table
+    
+    return { success: true, error: null };
+  } catch (error) {
+    console.error('Error sending notification:', error);
+    return { success: false, error };
   }
 };
 
@@ -799,5 +945,154 @@ export const deleteVaccine = async (id) => {
   } catch (error) {
     console.error('Error:', error);
     return { error };
+  }
+};
+
+// Treatment Records Functions
+export const createTreatmentRecord = async (treatmentData) => {
+  try {
+    const { data, error } = await supabase
+      .from('treatment_records')
+      .insert([treatmentData])
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error creating treatment record:', error);
+      return { data: null, error };
+    }
+    
+    return { data, error: null };
+  } catch (error) {
+    console.error('Error:', error);
+    return { data: null, error };
+  }
+};
+
+export const updateAppointmentStatus = async (appointmentId, status) => {
+  try {
+    const { data, error } = await supabase
+      .from('appointments')
+      .update({ status: status })
+      .eq('id', appointmentId)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error updating appointment status:', error);
+      return { data: null, error };
+    }
+    
+    return { data, error: null };
+  } catch (error) {
+    console.error('Error:', error);
+    return { data: null, error };
+  }
+};
+
+export const getTreatmentRecords = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('treatment_records')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching treatment records:', error);
+      return { data: null, error };
+    }
+    
+    return { data, error: null };
+  } catch (error) {
+    console.error('Error:', error);
+    return { data: null, error };
+  }
+};
+
+// Get treatment records for authenticated patient by user ID
+export const getPatientTreatmentRecordsByUserId = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('treatment_records')
+      .select('*')
+      .eq('patient_user_id', (await supabase.auth.getUser()).data.user?.id)
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching patient treatment records by user ID:', error);
+      return { data: null, error };
+    }
+    
+    return { data, error: null };
+  } catch (error) {
+    console.error('Error:', error);
+    return { data: null, error };
+  }
+};
+
+// Get treatment records for a specific patient by contact (fallback method)
+export const getPatientTreatmentRecords = async (contact) => {
+  try {
+    const { data, error } = await supabase
+      .from('treatment_records')
+      .select('*')
+      .eq('patient_contact', contact)
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching patient treatment records:', error);
+      return { data: null, error };
+    }
+    
+    return { data, error: null };
+  } catch (error) {
+    console.error('Error:', error);
+    return { data: null, error };
+  }
+};
+
+// Verify patient identity and get their treatment records (for non-authenticated access)
+export const verifyPatientAndGetRecords = async (patientName, contact) => {
+  try {
+    const { data, error } = await supabase
+      .from('treatment_records')
+      .select('*')
+      .ilike('patient_name', `%${patientName}%`)
+      .eq('patient_contact', contact)
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error verifying patient and fetching records:', error);
+      return { data: null, error };
+    }
+    
+    return { data, error: null };
+  } catch (error) {
+    console.error('Error:', error);
+    return { data: null, error };
+  }
+};
+
+// Check if current user has treatment records (for authenticated patients)
+export const checkUserHasTreatmentRecords = async () => {
+  try {
+    const { data: user } = await supabase.auth.getUser();
+    if (!user.user) return { hasRecords: false, error: 'Not authenticated' };
+    
+    const { data, error } = await supabase
+      .from('treatment_records')
+      .select('id')
+      .eq('patient_user_id', user.user.id)
+      .limit(1);
+    
+    if (error) {
+      console.error('Error checking user treatment records:', error);
+      return { hasRecords: false, error };
+    }
+    
+    return { hasRecords: data && data.length > 0, error: null };
+  } catch (error) {
+    console.error('Error:', error);
+    return { hasRecords: false, error };
   }
 }; 

@@ -4,7 +4,7 @@ import logoImage from './assets/logo1.png';
 import './AdminDashboard.css';
 import StaffAppointmentList from './staff/StaffAppointmentList';
 import StaffPatientListTracker from './staff/StaffPatientListTracker';
-import StaffPatientPayments from './staff/StaffPatientPayments';
+// import StaffPatientPayments from './staff/StaffPatientPayments';
 import StaffPatientHistory from './staff/StaffPatientHistory';
 import StaffDashboardOverview from './staff/StaffDashboardOverview';
 import ProfessionalHeader from './components/ProfessionalHeader.jsx';
@@ -36,7 +36,7 @@ const StaffDashboard = ({ onLogout }) => {
     { id: 'appointment-list', label: 'Appointment List', icon: <FaCalendarCheck /> },  
     { id: 'patient-list', label: 'Patient List', icon: <FaUsers /> },
     { id: 'patient-history', label: 'Patient History', icon: <FaUser /> },
-    { id: 'patient-payments', label: 'Patient Payments', icon: <FaMoneyBill /> },
+    // { id: 'patient-payments', label: 'Patient Payments', icon: <FaMoneyBill /> },
     
   ];
 

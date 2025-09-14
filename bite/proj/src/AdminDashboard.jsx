@@ -3,14 +3,14 @@ import './AdminDashboard.css';
 import Dashboard from './components/Dashboard.jsx';
 import AppointmentList from './components/AppointmentList.jsx';
 import PatientList from './components/PatientList.jsx';
-import PatientPayments from './components/PatientPayments.jsx';
+// import PatientPayments from './components/PatientPayments.jsx';
 import Staff from './components/Staff.jsx';
 import Schedule from './components/Schedule.jsx';
 import VaccineManagement from './components/VaccineManagement.jsx';
 import AnalyticsReports from './components/AnalyticsReports.jsx';
 import Map from './components/Map.jsx';
 import ProfessionalHeader from './components/ProfessionalHeader.jsx';
-import { FaTachometerAlt, FaCalendarCheck, FaUsers, FaMoneyBill, FaUser, FaUserMd, FaCalendarAlt, FaSyringe, FaChartBar, FaMapMarkedAlt } from 'react-icons/fa';
+import { FaTachometerAlt, FaCalendarCheck, FaUsers, FaUserMd, FaCalendarAlt, FaSyringe, FaChartBar, FaMapMarkedAlt } from 'react-icons/fa';
 import { supabase } from './supabase';
 import logoImage from './assets/logo1.png';
 
@@ -39,7 +39,7 @@ const AdminDashboard = ({ onLogout }) => {
     { id: 'dashboard', label: 'Dashboard', icon: <FaTachometerAlt /> },
     { id: 'appointment-list', label: 'Appointment List', icon: <FaCalendarCheck /> },
     { id: 'patient-list', label: 'Patient History', icon: <FaUsers /> },
-    { id: 'patient-payments', label: 'Patient Payments', icon: <FaMoneyBill /> },
+    // { id: 'patient-payments', label: 'Patient Payments', icon: <FaMoneyBill /> },
     { id: 'staff', label: 'Staff', icon: <FaUserMd /> },
     { id: 'schedule', label: 'Schedule', icon: <FaCalendarAlt /> },
     { id: 'vaccine-management', label: 'Vaccine Management', icon: <FaSyringe /> },
