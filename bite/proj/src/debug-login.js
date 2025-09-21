@@ -7,7 +7,7 @@ export const debugLogin = async () => {
   try {
     // 1. Test Supabase connection
     console.log('1. Testing Supabase connection...');
-    const { data: testData, error: testError } = await supabase
+    const { error: testError } = await supabase
       .from('profiles')
       .select('count')
       .limit(1);
@@ -80,7 +80,7 @@ export const debugLogin = async () => {
 };
 
 // Test specific username/email
-export const testLoginCredentials = async (username, password) => {
+export const testLoginCredentials = async (username) => {
   console.log(`🔐 Testing login for: ${username}`);
   
   try {

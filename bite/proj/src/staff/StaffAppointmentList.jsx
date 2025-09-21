@@ -81,14 +81,7 @@ const StaffAppointmentList = () => {
   };
 
   // Format time for display
-  const formatTime = (timeString) => {
-    if (!timeString) return 'Not specified';
-    return new Date(`2000-01-01T${timeString}`).toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
-  };
+  // (formatTime function removed as it was unused)
 
   // Filter appointments by tab
   const filteredAppointments = appointments.filter(appointment => {
@@ -603,7 +596,7 @@ const StaffAppointmentList = () => {
                   <div>
                     <span style={{ fontWeight: '600', color: '#dc2626' }}>SITE OF BITE:</span>
                     <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {selectedAppointment.place_bitten || 'N/A'}
+                      {selectedAppointment.site_of_bite || 'N/A'}
                     </span>
                   </div>
                   <div>
@@ -621,7 +614,7 @@ const StaffAppointmentList = () => {
                   <div>
                     <span style={{ fontWeight: '600', color: '#dc2626' }}>PLACE BITTEN (BARANGAY):</span>
                     <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {selectedAppointment.barangay || selectedAppointment.patient_address || 'N/A'}
+                      {selectedAppointment.barangay || selectedAppointment.place_bitten || 'N/A'}
                     </span>
                   </div>
                   <div>

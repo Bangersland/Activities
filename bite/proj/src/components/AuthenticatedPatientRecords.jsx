@@ -62,7 +62,7 @@ const AuthenticatedPatientRecords = () => {
     
     // Handle checkbox object format
     const selected = Object.entries(jsonData)
-      .filter(([key, value]) => value === true)
+      .filter(([, value]) => value === true)
       .map(([key]) => key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()));
     
     return selected.length > 0 ? selected.join(', ') : 'Not specified';
