@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { verifyPatientAndGetRecords } from '../supabase';
+import BarangayCaseCount from './BarangayCaseCount';
 
 const PatientRecords = () => {
   const [patientName, setPatientName] = useState('');
@@ -159,7 +160,14 @@ const PatientRecords = () => {
                         <div><strong>Site of Bite:</strong> {record.site_of_bite}</div>
                         <div><strong>Biting Animal:</strong> {record.biting_animal}</div>
                         <div><strong>Animal Status:</strong> {record.animal_status}</div>
-                        <div><strong>Place Bitten:</strong> {record.place_bitten_barangay}</div>
+                        <div>
+                          <div><strong>Place Bitten:</strong> {record.place_bitten_barangay}</div>
+                          {record.place_bitten_barangay && (
+                            <div style={{ marginTop: '8px' }}>
+                              <BarangayCaseCount barangayName={record.place_bitten_barangay} />
+                            </div>
+                          )}
+                        </div>
                         <div><strong>Provoked:</strong> {record.provoked}</div>
                         <div><strong>Local Wound Treatment:</strong> {record.local_wound_treatment}</div>
                       </div>

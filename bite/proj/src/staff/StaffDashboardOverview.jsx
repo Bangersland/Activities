@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FaUsers, FaCalendarAlt, FaExclamationTriangle, FaSyringe, FaUserMd } from 'react-icons/fa';
+import { FaUsers, FaCalendarAlt, FaExclamationTriangle, FaSyringe } from 'react-icons/fa';
 
 const StaffDashboardOverview = () => {
   const [currentDate, setCurrentDate] = useState(new Date());

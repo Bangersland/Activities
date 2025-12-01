@@ -787,6 +787,48 @@ export const getAllAppointments = async () => {
   }
 };
 
+// Function to get pending appointments (status = 'pending')
+export const getPendingAppointments = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('appointments')
+      .select('*')
+      .eq('status', 'pending')
+      .order('appointment_date', { ascending: true });
+
+    if (error) {
+      console.error('Error getting pending appointments:', error);
+      return { data: [], error };
+    }
+
+    return { data: data || [], error: null };
+  } catch (error) {
+    console.error('Error in getPendingAppointments:', error);
+    return { data: [], error };
+  }
+};
+
+// Function to get confirmed appointments (status = 'confirmed' or 'completed')
+export const getConfirmedAppointments = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('appointments')
+      .select('*')
+      .in('status', ['confirmed', 'completed'])
+      .order('appointment_date', { ascending: true });
+
+    if (error) {
+      console.error('Error getting confirmed appointments:', error);
+      return { data: [], error };
+    }
+
+    return { data: data || [], error: null };
+  } catch (error) {
+    console.error('Error in getConfirmedAppointments:', error);
+    return { data: [], error };
+  }
+};
+
 // Function to confirm an appointment
 export const confirmAppointment = async (appointmentId) => {
   try {
@@ -948,6 +990,100 @@ export const deleteVaccine = async (id) => {
   }
 };
 
+// Function to deduct vaccine stock based on people_per_vaccine
+export const deductVaccineStock = async (vaccineBrandName) => {
+  try {
+    if (!vaccineBrandName) {
+      return { data: null, error: null }; // No vaccine specified, skip deduction
+    }
+
+    // Find the vaccine by brand name
+    const { data: vaccines, error: fetchError } = await supabase
+      .from('vaccines')
+      .select('*')
+      .eq('vaccine_brand', vaccineBrandName)
+      .order('expiry_date', { ascending: true }) // Use earliest expiring vaccine first
+      .limit(1);
+
+    if (fetchError) {
+      console.error('Error fetching vaccine:', fetchError);
+      return { data: null, error: fetchError };
+    }
+
+    if (!vaccines || vaccines.length === 0) {
+      console.warn(`Vaccine "${vaccineBrandName}" not found in inventory`);
+      return { data: null, error: null }; // Vaccine not found, but don't fail the operation
+    }
+
+    const vaccine = vaccines[0];
+
+    // Check if vaccine is expired
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expiryDate = new Date(vaccine.expiry_date);
+    expiryDate.setHours(0, 0, 0, 0);
+
+    if (expiryDate <= today) {
+      console.warn(`Vaccine "${vaccineBrandName}" has expired`);
+      return { data: null, error: { message: 'Vaccine has expired' } };
+    }
+
+    // Check if there's stock available
+    if (vaccine.stock_quantity <= 0) {
+      console.warn(`Vaccine "${vaccineBrandName}" is out of stock`);
+      return { data: null, error: { message: 'Vaccine is out of stock' } };
+    }
+
+    // Get or initialize usage counter
+    const currentUsageCount = vaccine.usage_count || 0;
+    const peoplePerVaccine = vaccine.people_per_vaccine || 1;
+    const newUsageCount = currentUsageCount + 1;
+
+    // If we've reached the threshold, deduct stock and reset counter
+    if (newUsageCount >= peoplePerVaccine) {
+      const newStockQuantity = Math.max(0, vaccine.stock_quantity - 1);
+      const resetUsageCount = 0; // Reset counter after deduction
+
+      const { data: updatedVaccine, error: updateError } = await supabase
+        .from('vaccines')
+        .update({
+          stock_quantity: newStockQuantity,
+          usage_count: resetUsageCount
+        })
+        .eq('id', vaccine.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error('Error updating vaccine stock:', updateError);
+        return { data: null, error: updateError };
+      }
+
+      return { data: updatedVaccine, error: null };
+    } else {
+      // Just increment the usage counter
+      const { data: updatedVaccine, error: updateError } = await supabase
+        .from('vaccines')
+        .update({
+          usage_count: newUsageCount
+        })
+        .eq('id', vaccine.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error('Error updating vaccine usage count:', updateError);
+        return { data: null, error: updateError };
+      }
+
+      return { data: updatedVaccine, error: null };
+    }
+  } catch (error) {
+    console.error('Error in deductVaccineStock:', error);
+    return { data: null, error };
+  }
+};
+
 // Treatment Records Functions
 export const createTreatmentRecord = async (treatmentData) => {
   try {
@@ -960,6 +1096,11 @@ export const createTreatmentRecord = async (treatmentData) => {
     if (error) {
       console.error('Error creating treatment record:', error);
       return { data: null, error };
+    }
+
+    // Deduct vaccine stock if vaccine_brand_name is provided
+    if (treatmentData.vaccine_brand_name) {
+      await deductVaccineStock(treatmentData.vaccine_brand_name);
     }
     
     return { data, error: null };
@@ -1009,13 +1150,38 @@ export const getTreatmentRecords = async () => {
   }
 };
 
+// Get treatment record by appointment ID
+export const getTreatmentRecordByAppointmentId = async (appointmentId) => {
+  try {
+    const { data, error } = await supabase
+      .from('treatment_records')
+      .select('*')
+      .eq('appointment_id', appointmentId)
+      .single();
+    
+    if (error) {
+      // If no record found, that's okay - return null
+      if (error.code === 'PGRST116') {
+        return { data: null, error: null };
+      }
+      console.error('Error fetching treatment record:', error);
+      return { data: null, error };
+    }
+    
+    return { data, error: null };
+  } catch (error) {
+    console.error('Error:', error);
+    return { data: null, error };
+  }
+};
+
 // Get treatment records for authenticated patient by user ID
 export const getPatientTreatmentRecordsByUserId = async () => {
   try {
     const { data, error } = await supabase
       .from('treatment_records')
       .select('*')
-      .eq('patient_user_id', (await supabase.auth.getUser()).data.user?.id)
+      .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
       .order('created_at', { ascending: false });
     
     if (error) {
@@ -1082,7 +1248,7 @@ export const checkUserHasTreatmentRecords = async () => {
     const { data, error } = await supabase
       .from('treatment_records')
       .select('id')
-      .eq('patient_user_id', user.user.id)
+      .eq('user_id', user.user.id)
       .limit(1);
     
     if (error) {
@@ -1094,5 +1260,203 @@ export const checkUserHasTreatmentRecords = async () => {
   } catch (error) {
     console.error('Error:', error);
     return { hasRecords: false, error };
+  }
+};
+
+// Dose Tracking Functions
+
+// Map dose numbers to database field names
+const getDoseFieldNames = (doseNumber) => {
+  const doseMap = {
+    1: { date: 'd0_date', status: 'd0_status', updatedBy: 'd0_updated_by', updatedAt: 'd0_updated_at' },
+    2: { date: 'd3_date', status: 'd3_status', updatedBy: 'd3_updated_by', updatedAt: 'd3_updated_at' },
+    3: { date: 'd7_date', status: 'd7_status', updatedBy: 'd7_updated_by', updatedAt: 'd7_updated_at' },
+    4: { date: 'd14_date', status: 'd14_status', updatedBy: 'd14_updated_by', updatedAt: 'd14_updated_at' },
+    5: { date: 'd28_30_date', status: 'd28_30_status', updatedBy: 'd28_30_updated_by', updatedAt: 'd28_30_updated_at' }
+  };
+  return doseMap[doseNumber] || null;
+};
+
+// Get patients by dose number
+export const getPatientsByDose = async (doseNumber, includeCompleted = false) => {
+  try {
+    const fieldNames = getDoseFieldNames(doseNumber);
+    if (!fieldNames) {
+      return { data: null, error: { message: 'Invalid dose number' } };
+    }
+
+    let query = supabase
+      .from('treatment_records')
+      .select('*')
+      .not(fieldNames.date, 'is', null);
+
+    if (!includeCompleted) {
+      query = query.in(fieldNames.status, ['pending', 'missed']);
+    }
+
+    const { data, error } = await query.order(fieldNames.date, { ascending: true });
+
+    if (error) {
+      console.error('Error fetching patients by dose:', error);
+      return { data: null, error };
+    }
+
+    // Enrich data with staff names who updated the status
+    const enrichedData = await Promise.all(
+      (data || []).map(async (record) => {
+        const updatedBy = record[fieldNames.updatedBy];
+        let updatedByName = null;
+        
+        if (updatedBy) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('first_name, last_name, username')
+            .eq('id', updatedBy)
+            .single();
+          
+          if (profile) {
+            updatedByName = profile.first_name && profile.last_name
+              ? `${profile.first_name} ${profile.last_name}`
+              : profile.username || 'Unknown';
+          }
+        }
+
+        return {
+          ...record,
+          updatedByName,
+          doseNumber,
+          doseDate: record[fieldNames.date],
+          doseStatus: record[fieldNames.status] || 'pending',
+          doseUpdatedAt: record[fieldNames.updatedAt]
+        };
+      })
+    );
+
+    return { data: enrichedData, error: null };
+  } catch (error) {
+    console.error('Error in getPatientsByDose:', error);
+    return { data: null, error };
+  }
+};
+
+// Update dose status
+export const updateDoseStatus = async (treatmentRecordId, doseNumber, status, updatedByUserId, updatedByName) => {
+  try {
+    const fieldNames = getDoseFieldNames(doseNumber);
+    if (!fieldNames) {
+      return { data: null, error: { message: 'Invalid dose number' } };
+    }
+
+    if (!['completed', 'missed'].includes(status)) {
+      return { data: null, error: { message: 'Status must be "completed" or "missed"' } };
+    }
+
+    // Get current treatment record
+    const { data: currentRecord, error: fetchError } = await supabase
+      .from('treatment_records')
+      .select('*')
+      .eq('id', treatmentRecordId)
+      .single();
+
+    if (fetchError || !currentRecord) {
+      return { data: null, error: fetchError || { message: 'Treatment record not found' } };
+    }
+
+    // Prepare update object
+    const updateData = {
+      [fieldNames.status]: status,
+      [fieldNames.updatedBy]: updatedByUserId,
+      [fieldNames.updatedAt]: new Date().toISOString()
+    };
+
+    // Get current injection_records or initialize as empty array
+    const injectionRecords = currentRecord.injection_records || [];
+    
+    // Add new injection record
+    const newInjectionRecord = {
+      dose_number: doseNumber,
+      injected_by_user_id: updatedByUserId,
+      injected_by_name: updatedByName || 'Unknown',
+      injected_at: new Date().toISOString(),
+      date_field: fieldNames.date,
+      status: status
+    };
+
+    updateData.injection_records = [...injectionRecords, newInjectionRecord];
+
+    // Update the treatment record
+    const { data, error } = await supabase
+      .from('treatment_records')
+      .update(updateData)
+      .eq('id', treatmentRecordId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating dose status:', error);
+      return { data: null, error };
+    }
+
+    return { data, error: null };
+  } catch (error) {
+    console.error('Error in updateDoseStatus:', error);
+    return { data: null, error };
+  }
+};
+
+// Get dose count by status
+export const getDoseCountByStatus = async (doseNumber, status) => {
+  try {
+    const fieldNames = getDoseFieldNames(doseNumber);
+    if (!fieldNames) {
+      return { count: 0, error: { message: 'Invalid dose number' } };
+    }
+
+    const { count, error } = await supabase
+      .from('treatment_records')
+      .select('id', { count: 'exact', head: true })
+      .eq(fieldNames.status, status)
+      .not(fieldNames.date, 'is', null);
+
+    if (error) {
+      console.error('Error getting dose count by status:', error);
+      return { count: 0, error };
+    }
+
+    return { count: count || 0, error: null };
+  } catch (error) {
+    console.error('Error in getDoseCountByStatus:', error);
+    return { count: 0, error };
+  }
+};
+
+// Get all dose statistics (pending, completed, missed counts for each dose)
+export const getAllDoseStatistics = async () => {
+  try {
+    const statistics = {};
+    
+    for (let doseNumber = 1; doseNumber <= 5; doseNumber++) {
+      const fieldNames = getDoseFieldNames(doseNumber);
+      if (!fieldNames) continue;
+
+      // Get counts for each status
+      const [pending, completed, missed] = await Promise.all([
+        getDoseCountByStatus(doseNumber, 'pending'),
+        getDoseCountByStatus(doseNumber, 'completed'),
+        getDoseCountByStatus(doseNumber, 'missed')
+      ]);
+
+      statistics[doseNumber] = {
+        pending: pending.count || 0,
+        completed: completed.count || 0,
+        missed: missed.count || 0,
+        total: (pending.count || 0) + (completed.count || 0) + (missed.count || 0)
+      };
+    }
+
+    return { data: statistics, error: null };
+  } catch (error) {
+    console.error('Error in getAllDoseStatistics:', error);
+    return { data: null, error };
   }
 }; 

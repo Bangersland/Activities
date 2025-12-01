@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { getAllAppointments, getVaccines, createTreatmentRecord, updateAppointmentStatus, getCurrentUser } from '../supabase';
-import { FaEye } from 'react-icons/fa';
+import { getAllAppointments, getVaccines, createTreatmentRecord, updateAppointmentStatus, getCurrentUser, getTreatmentRecordByAppointmentId, getTreatmentRecords } from '../supabase';
+import { FaEye, FaTimes } from 'react-icons/fa';
+import BarangayCaseCount from '../components/BarangayCaseCount';
 
 const StaffAppointmentList = () => {
   const [activeTab, setActiveTab] = useState('upcoming');
@@ -9,6 +10,8 @@ const StaffAppointmentList = () => {
   const [vaccines, setVaccines] = useState([]);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [treatmentRecord, setTreatmentRecord] = useState(null);
+  const [loadingTreatment, setLoadingTreatment] = useState(false);
   const [treatmentData, setTreatmentData] = useState({
     type_of_exposure: '',
     category_of_exposure: {
@@ -81,6 +84,12 @@ const StaffAppointmentList = () => {
   };
 
   // Format time for display
+  const formatTime = (timeString) => {
+    if (!timeString) return 'Not specified';
+    return timeString;
+  };
+
+  // Format time for display
   // (formatTime function removed as it was unused)
 
   // Filter appointments by tab
@@ -103,15 +112,76 @@ const StaffAppointmentList = () => {
   const cancelledCount = appointments.filter(apt => apt.status === 'cancelled').length;
 
   // Handle view details
-  const handleViewDetails = (appointment) => {
+  const handleViewDetails = async (appointment) => {
+    console.log('Opening details for appointment:', appointment);
+    console.log('Appointment status:', appointment.status);
+    console.log('Appointment ID:', appointment.id);
+    
     setSelectedAppointment(appointment);
     setShowModal(true);
+    
+    // If appointment is completed, fetch the treatment record from treatment_records table
+    if (appointment.status === 'completed') {
+      setLoadingTreatment(true);
+      setTreatmentRecord(null); // Reset first
+      try {
+        console.log('Fetching treatment record for appointment ID:', appointment.id);
+        
+        // First, try to fetch by appointment_id
+        let { data, error } = await getTreatmentRecordByAppointmentId(appointment.id);
+        console.log('Treatment record fetch by appointment_id result:', { data, error });
+        
+        // If not found by appointment_id, try to fetch by patient contact and appointment date
+        if (!data && !error && appointment.patient_contact && appointment.appointment_date) {
+          console.log('Trying alternative fetch by patient contact and date...');
+          const { data: allRecords, error: allError } = await getTreatmentRecords();
+          
+          if (!allError && allRecords) {
+            // Find matching record by patient contact and appointment date
+            const matchingRecord = allRecords.find(record => 
+              record.patient_contact === appointment.patient_contact &&
+              record.appointment_date === appointment.appointment_date
+            );
+            
+            if (matchingRecord) {
+              console.log('Found treatment record by patient contact and date:', matchingRecord);
+              data = matchingRecord;
+              error = null;
+            } else {
+              console.log('No matching record found by patient contact and date');
+            }
+          }
+        }
+        
+        if (error) {
+          console.error('Error fetching treatment record:', error);
+          setTreatmentRecord(null);
+        } else if (data) {
+          setTreatmentRecord(data);
+          console.log('Treatment record loaded successfully:', data);
+          console.log('Treatment record keys:', Object.keys(data));
+        } else {
+          console.warn('No treatment record found for appointment ID:', appointment.id);
+          setTreatmentRecord(null);
+        }
+      } catch (error) {
+        console.error('Exception while fetching treatment record:', error);
+        setTreatmentRecord(null);
+      } finally {
+        setLoadingTreatment(false);
+      }
+    } else {
+      // Reset treatment record for upcoming appointments
+      setTreatmentRecord(null);
+      setLoadingTreatment(false);
+    }
   };
 
   // Handle modal close
   const handleCloseModal = () => {
     setShowModal(false);
     setSelectedAppointment(null);
+    setTreatmentRecord(null);
     setTreatmentData({
       type_of_exposure: '',
       category_of_exposure: {
@@ -168,7 +238,7 @@ const StaffAppointmentList = () => {
         appointment_id: selectedAppointment.id,
         
         // Patient Information
-        patient_user_id: selectedAppointment.user_id || null, // Link to patient's user account
+        user_id: selectedAppointment.user_id || null, // Link to patient's user account
         patient_name: selectedAppointment.patient_name,
         patient_contact: selectedAppointment.patient_contact,
         patient_address: selectedAppointment.patient_address,
@@ -179,10 +249,10 @@ const StaffAppointmentList = () => {
         // Bite Information
         date_bitten: selectedAppointment.date_bitten,
         time_bitten: selectedAppointment.time_bitten,
-        site_of_bite: selectedAppointment.place_bitten,
+        site_of_bite: selectedAppointment.site_of_bite,
         biting_animal: selectedAppointment.biting_animal,
         animal_status: selectedAppointment.animal_status,
-        place_bitten_barangay: selectedAppointment.barangay || selectedAppointment.patient_address,
+        place_bitten_barangay: selectedAppointment.place_bitten,
         provoked: selectedAppointment.provoke,
         local_wound_treatment: selectedAppointment.washing_of_bite || selectedAppointment.local_wound_treatment,
         
@@ -460,10 +530,12 @@ const StaffAppointmentList = () => {
               borderRadius: '12px',
               padding: '24px',
               width: '90%',
-              maxWidth: '800px',
-              maxHeight: '90vh',
+              maxWidth: '900px',
+              maxHeight: '95vh',
               overflowY: 'auto',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+              display: 'flex',
+              flexDirection: 'column'
             }}>
               <div style={{
                 display: 'flex',
@@ -473,14 +545,31 @@ const StaffAppointmentList = () => {
                 borderBottom: '1px solid #e5e7eb',
                 paddingBottom: '16px'
               }}>
-                <h3 style={{
-                  margin: 0,
-                  fontSize: '20px',
-                  fontWeight: '700',
-                  color: '#1f2937'
-                }}>
-                  Treatment Details - {selectedAppointment.patient_name}
-                </h3>
+                <div>
+                  <h3 style={{
+                    margin: 0,
+                    fontSize: '20px',
+                    fontWeight: '700',
+                    color: '#1f2937'
+                  }}>
+                    Treatment Details - {selectedAppointment.patient_name}
+                  </h3>
+                  {selectedAppointment.status === 'completed' && (
+                    <div style={{
+                      fontSize: '12px',
+                      color: '#6b7280',
+                      marginTop: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      <span>Status: {selectedAppointment.status}</span>
+                      {loadingTreatment && <span>• Loading treatment record...</span>}
+                      {!loadingTreatment && treatmentRecord && <span>• Treatment record loaded</span>}
+                      {!loadingTreatment && !treatmentRecord && <span>• No treatment record found</span>}
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={handleCloseModal}
                   style={{
@@ -496,160 +585,372 @@ const StaffAppointmentList = () => {
                 </button>
               </div>
 
-              {/* Patient Information Section */}
-              <div style={{
-                backgroundColor: '#f8fafc',
-                padding: '20px',
-                borderRadius: '8px',
-                marginBottom: '24px',
-                border: '1px solid #e2e8f0'
-              }}>
-                <h4 style={{
-                  margin: '0 0 16px 0',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  color: '#1e40af',
-                  borderBottom: '2px solid #3b82f6',
-                  paddingBottom: '8px'
-                }}>
-                  Patient Information
-                </h4>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '16px'
-                }}>
-                  <div>
-                    <span style={{ fontWeight: '600', color: '#374151' }}>Name:</span>
-                    <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {selectedAppointment.patient_name || 'N/A'}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ fontWeight: '600', color: '#374151' }}>Contact:</span>
-                    <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {selectedAppointment.patient_contact || 'N/A'}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ fontWeight: '600', color: '#374151' }}>Address:</span>
-                    <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {selectedAppointment.patient_address || 'N/A'}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ fontWeight: '600', color: '#374151' }}>Age:</span>
-                    <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {selectedAppointment.patient_age || 'N/A'}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ fontWeight: '600', color: '#374151' }}>Sex:</span>
-                    <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {selectedAppointment.patient_sex || 'N/A'}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ fontWeight: '600', color: '#374151' }}>Appointment Date:</span>
-                    <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {formatDate(selectedAppointment.appointment_date)}
-                    </span>
-                  </div>
-                </div>
-              </div>
+              {/* Show treatment details if completed, otherwise show form */}
+              {selectedAppointment.status === 'completed' ? (
+                // Display existing treatment record
+                <div style={{ maxHeight: 'calc(90vh - 200px)', overflowY: 'auto' }}>
+                  {loadingTreatment ? (
+                    <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+                      Loading treatment details...
+                    </div>
+                  ) : treatmentRecord ? (
+                    <>
+                      {/* Summary Card */}
+                      <div style={{
+                        marginBottom: '24px',
+                        padding: '16px',
+                        backgroundColor: '#eff6ff',
+                        borderRadius: '8px',
+                        border: '1px solid #bfdbfe'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: '12px'
+                        }}>
+                          <div>
+                            <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', marginBottom: '4px' }}>PATIENT</div>
+                            <div style={{ fontSize: '18px', fontWeight: '700', color: '#1f2937' }}>
+                              {treatmentRecord.patient_name || 'Unknown Patient'}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', marginBottom: '4px' }}>APPOINTMENT DATE</div>
+                            <div style={{ fontSize: '16px', fontWeight: '600', color: '#3b82f6' }}>
+                              {formatDate(treatmentRecord.appointment_date)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
 
-              {/* Bite Incident Information Section */}
-              <div style={{
-                backgroundColor: '#fef2f2',
-                padding: '20px',
-                borderRadius: '8px',
-                marginBottom: '24px',
-                border: '1px solid #fecaca'
-              }}>
-                <h4 style={{
-                  margin: '0 0 16px 0',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  color: '#dc2626',
-                  borderBottom: '2px solid #ef4444',
-                  paddingBottom: '8px'
-                }}>
-                  Bite Information
-                </h4>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '16px'
-                }}>
-                  <div>
-                    <span style={{ fontWeight: '600', color: '#dc2626' }}>DATE BITTEN:</span>
-                    <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {selectedAppointment.date_bitten ? formatDate(selectedAppointment.date_bitten) : 'N/A'}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ fontWeight: '600', color: '#dc2626' }}>TIME BITTEN:</span>
-                    <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {selectedAppointment.time_bitten || 'N/A'}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ fontWeight: '600', color: '#dc2626' }}>SITE OF BITE:</span>
-                    <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {selectedAppointment.site_of_bite || 'N/A'}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ fontWeight: '600', color: '#dc2626' }}>BITING ANIMAL:</span>
-                    <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {selectedAppointment.biting_animal || 'N/A'}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ fontWeight: '600', color: '#dc2626' }}>ANIMAL STATUS:</span>
-                    <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {selectedAppointment.animal_status || 'N/A'}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ fontWeight: '600', color: '#dc2626' }}>PLACE BITTEN (BARANGAY):</span>
-                    <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {selectedAppointment.barangay || selectedAppointment.place_bitten || 'N/A'}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ fontWeight: '600', color: '#dc2626' }}>PROVOKED:</span>
-                    <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {selectedAppointment.provoke || 'N/A'}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ fontWeight: '600', color: '#dc2626' }}>LOCAL WOUND TREATMENT:</span>
-                    <span style={{ marginLeft: '8px', color: '#6b7280' }}>
-                      {selectedAppointment.washing_of_bite || selectedAppointment.local_wound_treatment || 'N/A'}
-                    </span>
-                  </div>
-                </div>
-              </div>
+                      {/* Patient Information */}
+                      <div style={{ marginBottom: '24px' }}>
+                        <h4 style={{
+                          margin: '0 0 16px 0',
+                          fontSize: '16px',
+                          fontWeight: '600',
+                          color: '#374151',
+                          borderBottom: '2px solid #3b82f6',
+                          paddingBottom: '8px'
+                        }}>
+                          Patient Information
+                        </h4>
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(2, 1fr)',
+                          gap: '16px'
+                        }}>
+                          <DetailItem label="Name" value={treatmentRecord.patient_name} />
+                          <DetailItem label="Contact" value={treatmentRecord.patient_contact} />
+                          <DetailItem label="Address" value={treatmentRecord.patient_address} />
+                          <DetailItem label="Age" value={treatmentRecord.patient_age} />
+                          <DetailItem label="Sex" value={treatmentRecord.patient_sex} />
+                          <DetailItem label="Appointment Date" value={formatDate(treatmentRecord.appointment_date)} />
+                          <DetailItem label="Appointment ID" value={treatmentRecord.appointment_id} />
+                          <DetailItem label="Record ID" value={treatmentRecord.id} />
+                        </div>
+                      </div>
 
-              <form onSubmit={handleSubmit}>
-                <div style={{
-                  backgroundColor: '#f0f9ff',
-                  padding: '20px',
-                  borderRadius: '8px',
-                  marginBottom: '24px',
-                  border: '1px solid #bae6fd'
-                }}>
-                  <h4 style={{
-                    margin: '0 0 16px 0',
-                    fontSize: '16px',
-                    fontWeight: '600',
-                    color: '#0369a1',
-                    borderBottom: '2px solid #0ea5e9',
-                    paddingBottom: '8px'
-                  }}>
-                    Treatment Details
-                  </h4>
+                      {/* Bite Information */}
+                      <div style={{ marginBottom: '24px' }}>
+                        <h4 style={{
+                          margin: '0 0 16px 0',
+                          fontSize: '16px',
+                          fontWeight: '600',
+                          color: '#374151',
+                          borderBottom: '2px solid #3b82f6',
+                          paddingBottom: '8px'
+                        }}>
+                          Bite Information
+                        </h4>
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(2, 1fr)',
+                          gap: '12px'
+                        }}>
+                          <DetailItem label="Date Bitten" value={formatDate(treatmentRecord.date_bitten)} />
+                          <DetailItem label="Time Bitten" value={formatTime(treatmentRecord.time_bitten)} />
+                          <DetailItem label="Site of Bite" value={treatmentRecord.site_of_bite} />
+                          <DetailItem label="Biting Animal" value={treatmentRecord.biting_animal} />
+                          <DetailItem label="Animal Status" value={treatmentRecord.animal_status} />
+                          <div>
+                            <DetailItem label="Place Bitten (Barangay)" value={treatmentRecord.place_bitten_barangay} />
+                            {treatmentRecord.place_bitten_barangay && (
+                              <div style={{ marginTop: '8px' }}>
+                                <BarangayCaseCount barangayName={treatmentRecord.place_bitten_barangay} />
+                              </div>
+                            )}
+                          </div>
+                          <DetailItem label="Provoked" value={treatmentRecord.provoked} />
+                          <DetailItem label="Local Wound Treatment" value={treatmentRecord.local_wound_treatment} />
+                        </div>
+                      </div>
+
+                      {/* Treatment Details Display */}
+                      <div style={{
+                        backgroundColor: '#f0f9ff',
+                        padding: '20px',
+                        borderRadius: '8px',
+                        marginBottom: '24px',
+                        border: '1px solid #bae6fd'
+                      }}>
+                        <h4 style={{
+                          margin: '0 0 16px 0',
+                          fontSize: '16px',
+                          fontWeight: '600',
+                          color: '#0369a1',
+                          borderBottom: '2px solid #0ea5e9',
+                          paddingBottom: '8px'
+                        }}>
+                          Treatment Details
+                        </h4>
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: '16px'
+                        }}>
+                          <DetailItem label="Type of Exposure" value={treatmentRecord.type_of_exposure} />
+                          <DetailItem label="Category of Exposure" value={formatJSON(treatmentRecord.category_of_exposure)} />
+                          <DetailItem label="Vaccine Brand Name" value={treatmentRecord.vaccine_brand_name} />
+                          <DetailItem label="Treatment to be Given" value={formatJSON(treatmentRecord.treatment_to_be_given)} />
+                          <DetailItem label="Route" value={treatmentRecord.route} />
+                          <DetailItem label="RIG" value={treatmentRecord.rig} />
+                        </div>
+                      </div>
+
+                      {/* Vaccination Schedule */}
+                      <div style={{
+                        backgroundColor: '#f0fdf4',
+                        padding: '20px',
+                        borderRadius: '8px',
+                        marginBottom: '24px',
+                        border: '1px solid #bbf7d0'
+                      }}>
+                        <h4 style={{
+                          margin: '0 0 16px 0',
+                          fontSize: '16px',
+                          fontWeight: '600',
+                          color: '#166534',
+                          borderBottom: '2px solid #22c55e',
+                          paddingBottom: '8px'
+                        }}>
+                          Vaccination Schedule
+                        </h4>
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: '16px'
+                        }}>
+                          <DetailItem label="D0 Date" value={formatDate(treatmentRecord.d0_date)} />
+                          <DetailItem label="D3 Date" value={formatDate(treatmentRecord.d3_date)} />
+                          <DetailItem label="D7 Date" value={formatDate(treatmentRecord.d7_date)} />
+                          <DetailItem label="D14 Date" value={formatDate(treatmentRecord.d14_date)} />
+                          <DetailItem label="D28/30 Date" value={formatDate(treatmentRecord.d28_30_date)} />
+                          <DetailItem label="Status of Animal Date" value={formatDate(treatmentRecord.status_of_animal_date)} />
+                        </div>
+                      </div>
+
+                      {/* Remarks - Always show, even if empty */}
+                      <div style={{ marginBottom: '24px' }}>
+                        <h4 style={{
+                          margin: '0 0 16px 0',
+                          fontSize: '16px',
+                          fontWeight: '600',
+                          color: '#374151',
+                          borderBottom: '2px solid #3b82f6',
+                          paddingBottom: '8px'
+                        }}>
+                          Remarks
+                        </h4>
+                        <p style={{
+                          margin: 0,
+                          padding: '12px',
+                          backgroundColor: treatmentRecord.remarks ? '#f9fafb' : '#fef2f2',
+                          borderRadius: '8px',
+                          color: treatmentRecord.remarks ? '#374151' : '#991b1b',
+                          lineHeight: '1.6',
+                          fontStyle: treatmentRecord.remarks ? 'normal' : 'italic'
+                        }}>
+                          {treatmentRecord.remarks || 'No remarks provided'}
+                        </p>
+                      </div>
+
+                      {/* Record Metadata */}
+                      <div style={{ marginBottom: '24px' }}>
+                        <h4 style={{
+                          margin: '0 0 16px 0',
+                          fontSize: '16px',
+                          fontWeight: '600',
+                          color: '#374151',
+                          borderBottom: '2px solid #3b82f6',
+                          paddingBottom: '8px'
+                        }}>
+                          Record Metadata
+                        </h4>
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(2, 1fr)',
+                          gap: '16px'
+                        }}>
+                          <DetailItem label="Created At" value={treatmentRecord.created_at ? new Date(treatmentRecord.created_at).toLocaleString() : 'Not specified'} />
+                          <DetailItem label="Updated At" value={treatmentRecord.updated_at ? new Date(treatmentRecord.updated_at).toLocaleString() : 'Not specified'} />
+                          <DetailItem label="Created By" value={treatmentRecord.created_by || 'Not specified'} />
+                          <DetailItem label="User ID" value={treatmentRecord.user_id || 'Not specified'} />
+                        </div>
+                      </div>
+
+                      {/* Debug Section - Show raw data */}
+                      <div style={{ 
+                        marginTop: '32px',
+                        padding: '16px',
+                        backgroundColor: '#fef3c7',
+                        borderRadius: '8px',
+                        border: '2px solid #f59e0b'
+                      }}>
+                        <h4 style={{
+                          margin: '0 0 12px 0',
+                          fontSize: '14px',
+                          fontWeight: '600',
+                          color: '#92400e',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}>
+                          <span>🔍</span>
+                          <span>Debug: All Treatment Record Data (Raw JSON)</span>
+                        </h4>
+                        <div style={{
+                          marginBottom: '12px',
+                          fontSize: '12px',
+                          color: '#78350f',
+                          fontStyle: 'italic'
+                        }}>
+                          Check browser console (F12) for detailed logs.
+                        </div>
+                        <pre style={{
+                          margin: 0,
+                          fontSize: '11px',
+                          color: '#78350f',
+                          overflow: 'auto',
+                          maxHeight: '400px',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          backgroundColor: '#fffbeb',
+                          padding: '12px',
+                          borderRadius: '4px',
+                          border: '1px solid #fde68a',
+                          fontFamily: 'monospace'
+                        }}>
+                          {JSON.stringify(treatmentRecord, null, 2)}
+                        </pre>
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{
+                      textAlign: 'center',
+                      padding: '40px',
+                      color: '#6b7280',
+                      backgroundColor: '#fef2f2',
+                      borderRadius: '8px',
+                      border: '1px solid #fecaca'
+                    }}>
+                      <p style={{ fontSize: '16px', fontWeight: '600', color: '#991b1b', marginBottom: '8px' }}>
+                        No Treatment Record Found
+                      </p>
+                      <p style={{ fontSize: '14px', color: '#6b7280' }}>
+                        This completed appointment does not have a treatment record associated with it.
+                      </p>
+                      <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '8px' }}>
+                        Appointment ID: {selectedAppointment.id}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // Show patient details and form for upcoming appointments
+                <div style={{ maxHeight: 'calc(90vh - 200px)', overflowY: 'auto' }}>
+                  {/* Patient Information from Appointments Table */}
+                  <div style={{ marginBottom: '24px' }}>
+                    <h4 style={{
+                      margin: '0 0 16px 0',
+                      fontSize: '16px',
+                      fontWeight: '600',
+                      color: '#374151',
+                      borderBottom: '2px solid #3b82f6',
+                      paddingBottom: '8px'
+                    }}>
+                      Patient Information
+                    </h4>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, 1fr)',
+                      gap: '16px'
+                    }}>
+                      <DetailItem label="Name" value={selectedAppointment.patient_name} />
+                      <DetailItem label="Contact" value={selectedAppointment.patient_contact} />
+                      <DetailItem label="Address" value={selectedAppointment.patient_address} />
+                      <DetailItem label="Age" value={selectedAppointment.patient_age} />
+                      <DetailItem label="Sex" value={selectedAppointment.patient_sex} />
+                      <DetailItem label="Appointment Date" value={formatDate(selectedAppointment.appointment_date)} />
+                    </div>
+                  </div>
+
+                  {/* Bite Information from Appointments Table */}
+                  <div style={{ marginBottom: '24px' }}>
+                    <h4 style={{
+                      margin: '0 0 16px 0',
+                      fontSize: '16px',
+                      fontWeight: '600',
+                      color: '#374151',
+                      borderBottom: '2px solid #3b82f6',
+                      paddingBottom: '8px'
+                    }}>
+                      Bite Information
+                    </h4>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, 1fr)',
+                      gap: '12px'
+                    }}>
+                      <DetailItem label="Date Bitten" value={selectedAppointment.date_bitten ? formatDate(selectedAppointment.date_bitten) : null} />
+                      <DetailItem label="Time Bitten" value={selectedAppointment.time_bitten} />
+                      <DetailItem label="Site of Bite" value={selectedAppointment.site_of_bite} />
+                      <DetailItem label="Biting Animal" value={selectedAppointment.biting_animal} />
+                      <DetailItem label="Animal Status" value={selectedAppointment.animal_status} />
+                      <div>
+                        <DetailItem label="Place Bitten (Barangay)" value={selectedAppointment.place_bitten} />
+                        {selectedAppointment.place_bitten && (
+                          <div style={{ marginTop: '8px' }}>
+                            <BarangayCaseCount barangayName={selectedAppointment.place_bitten} />
+                          </div>
+                        )}
+                      </div>
+                      <DetailItem label="Provoked" value={selectedAppointment.provoke} />
+                      <DetailItem label="Local Wound Treatment" value={selectedAppointment.washing_of_bite || selectedAppointment.local_wound_treatment} />
+                    </div>
+                  </div>
+
+                  {/* Treatment Details Form */}
+                  <form onSubmit={handleSubmit}>
+                    <div style={{
+                      backgroundColor: '#f0f9ff',
+                      padding: '20px',
+                      borderRadius: '8px',
+                      marginBottom: '24px',
+                      border: '1px solid #bae6fd'
+                    }}>
+                      <h4 style={{
+                        margin: '0 0 16px 0',
+                        fontSize: '16px',
+                        fontWeight: '600',
+                        color: '#0369a1',
+                        borderBottom: '2px solid #0ea5e9',
+                        paddingBottom: '8px'
+                      }}>
+                        Treatment Details
+                      </h4>
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: '1fr 1fr',
@@ -1111,9 +1412,75 @@ const StaffAppointmentList = () => {
                   </button>
                 </div>
               </form>
+                </div>
+              )}
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+};
+
+// Helper function to format JSON data
+const formatJSON = (jsonData) => {
+  if (!jsonData) return 'Not specified';
+  
+  if (typeof jsonData === 'string') {
+    try {
+      jsonData = JSON.parse(jsonData);
+    } catch (e) {
+      return jsonData;
+    }
+  }
+  
+  if (typeof jsonData === 'object' && jsonData !== null) {
+    const entries = Object.entries(jsonData)
+      .filter(([_, value]) => value === true || value === 'true')
+      .map(([key, _]) => {
+        let formatted = key.replace(/_/g, ' ');
+        formatted = formatted.replace(/\b\w/g, l => l.toUpperCase());
+        return formatted;
+      });
+    return entries.length > 0 ? entries.join(', ') : 'None selected';
+  }
+  
+  return 'Not specified';
+};
+
+// Helper component for detail items
+const DetailItem = ({ label, value }) => {
+  const hasValue = value !== null && value !== undefined && value !== '';
+  
+  return (
+    <div style={{
+      padding: '10px',
+      backgroundColor: hasValue ? '#f9fafb' : '#fef2f2',
+      borderRadius: '6px',
+      border: `1px solid ${hasValue ? '#e5e7eb' : '#fecaca'}`
+    }}>
+      <div style={{
+        fontSize: '11px',
+        fontWeight: '700',
+        color: hasValue ? '#6b7280' : '#991b1b',
+        marginBottom: '6px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px'
+      }}>
+        {hasValue ? '✓' : '✗'} {label}
+      </div>
+      <div style={{
+        fontSize: '14px',
+        color: hasValue ? '#1f2937' : '#991b1b',
+        fontWeight: hasValue ? '500' : '400',
+        wordBreak: 'break-word',
+        lineHeight: '1.5',
+        fontStyle: hasValue ? 'normal' : 'italic'
+      }}>
+        {hasValue ? value : 'Not specified'}
       </div>
     </div>
   );

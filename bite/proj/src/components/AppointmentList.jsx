@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FaEye, FaCheck, FaSearch, FaCog, FaChevronDown } from 'react-icons/fa';
-import { getAllAppointments, confirmAppointment, sendPatientNotification } from '../supabase';
+import { getAllAppointments, confirmAppointment, sendPatientNotification, getPendingAppointments, getConfirmedAppointments } from '../supabase';
 
 const AppointmentList = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -12,11 +12,14 @@ const AppointmentList = () => {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'confirmed'
+  const [pendingCount, setPendingCount] = useState(0);
+  const [confirmedCount, setConfirmedCount] = useState(0);
 
-  // Fetch appointments on component mount
+  // Fetch appointments when component mounts or tab changes
   useEffect(() => {
     fetchAppointments();
-  }, []);
+  }, [activeTab]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -35,13 +38,31 @@ const AppointmentList = () => {
   const fetchAppointments = async () => {
     try {
       setLoading(true);
-      const { data, error } = await getAllAppointments();
+      
+      // Fetch appointments based on active tab from database
+      let result;
+      if (activeTab === 'pending') {
+        result = await getPendingAppointments();
+      } else {
+        result = await getConfirmedAppointments();
+      }
+      
+      const { data, error } = result;
       
       if (error) {
         setMessage(`Error loading appointments: ${error.message}`);
       } else {
-        setAppointments(data);
+        setAppointments(data || []);
       }
+      
+      // Also fetch counts for both tabs
+      const [pendingResult, confirmedResult] = await Promise.all([
+        getPendingAppointments(),
+        getConfirmedAppointments()
+      ]);
+      
+      if (pendingResult.data) setPendingCount(pendingResult.data.length);
+      if (confirmedResult.data) setConfirmedCount(confirmedResult.data.length);
     } catch (error) {
       setMessage(`Error: ${error.message}`);
     } finally {
@@ -66,7 +87,7 @@ const AppointmentList = () => {
           'appointment_confirmed'
         );
         
-        // Refresh appointments list
+        // Refresh appointments list and counts
         await fetchAppointments();
         setOpenDropdown(null);
         
@@ -80,12 +101,9 @@ const AppointmentList = () => {
     }
   };
 
-  // Filter appointments based on search term and exclude completed appointments
+  // Filter appointments based on search term (status filtering is done in database)
   const filteredAppointments = appointments.filter(appointment => {
-    // First filter out completed appointments
-    if (appointment.status === 'completed') return false;
-    
-    // Then apply search filter
+    // Apply search filter
     if (!searchTerm) return true;
     const searchLower = searchTerm.toLowerCase();
     return (
@@ -104,10 +122,10 @@ const AppointmentList = () => {
   const startIndex = (currentPage - 1) * rowsPerPage;
   const paginatedAppointments = filteredAppointments.slice(startIndex, startIndex + rowsPerPage);
 
-  // Reset to first page when search term changes
+  // Reset to first page when search term, rows per page, or active tab changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, rowsPerPage]);
+  }, [searchTerm, rowsPerPage, activeTab]);
 
   const handleViewDetails = (appointment) => {
     setSelectedAppointment(appointment);
@@ -118,6 +136,7 @@ const AppointmentList = () => {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'confirmed':
+      case 'completed': // Treat completed as confirmed for display
         return { backgroundColor: '#10b981', color: 'white' };
       case 'pending':
         return { backgroundColor: '#f59e0b', color: 'white' };
@@ -126,6 +145,14 @@ const AppointmentList = () => {
       default:
         return { backgroundColor: '#6b7280', color: 'white' };
     }
+  };
+
+  // Get display status - show "confirmed" for completed appointments
+  const getDisplayStatus = (status) => {
+    if (status === 'completed') {
+      return 'confirmed';
+    }
+    return status || 'pending';
   };
 
   const formatDate = (dateString) => {
@@ -191,6 +218,96 @@ const AppointmentList = () => {
             </div>
           )}
         
+        </div>
+
+        {/* Tabs for Pending and Completed */}
+        <div style={{
+          display: 'flex',
+          gap: '8px',
+          marginBottom: '24px',
+          borderBottom: '2px solid #e5e7eb',
+          paddingBottom: '0'
+        }}>
+          <button
+            onClick={() => setActiveTab('pending')}
+            style={{
+              padding: '12px 24px',
+              backgroundColor: activeTab === 'pending' ? '#3b82f6' : 'transparent',
+              color: activeTab === 'pending' ? 'white' : '#6b7280',
+              border: 'none',
+              borderBottom: activeTab === 'pending' ? '3px solid #3b82f6' : '3px solid transparent',
+              borderRadius: '8px 8px 0 0',
+              fontSize: '15px',
+              fontWeight: activeTab === 'pending' ? '600' : '500',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+            onMouseEnter={(e) => {
+              if (activeTab !== 'pending') {
+                e.target.style.backgroundColor = '#f3f4f6';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== 'pending') {
+                e.target.style.backgroundColor = 'transparent';
+              }
+            }}
+          >
+            Pending Appointments
+            <span style={{
+              backgroundColor: activeTab === 'pending' ? 'rgba(255, 255, 255, 0.3)' : '#e5e7eb',
+              color: activeTab === 'pending' ? 'white' : '#6b7280',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              fontSize: '12px',
+              fontWeight: '600'
+            }}>
+              {pendingCount}
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('confirmed')}
+            style={{
+              padding: '12px 24px',
+              backgroundColor: activeTab === 'confirmed' ? '#3b82f6' : 'transparent',
+              color: activeTab === 'confirmed' ? 'white' : '#6b7280',
+              border: 'none',
+              borderBottom: activeTab === 'confirmed' ? '3px solid #3b82f6' : '3px solid transparent',
+              borderRadius: '8px 8px 0 0',
+              fontSize: '15px',
+              fontWeight: activeTab === 'confirmed' ? '600' : '500',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+            onMouseEnter={(e) => {
+              if (activeTab !== 'confirmed') {
+                e.target.style.backgroundColor = '#f3f4f6';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== 'confirmed') {
+                e.target.style.backgroundColor = 'transparent';
+              }
+            }}
+          >
+            Confirmed Appointments
+            <span style={{
+              backgroundColor: activeTab === 'confirmed' ? 'rgba(255, 255, 255, 0.3)' : '#e5e7eb',
+              color: activeTab === 'confirmed' ? 'white' : '#6b7280',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              fontSize: '12px',
+              fontWeight: '600'
+            }}>
+              {confirmedCount}
+            </span>
+          </button>
         </div>
 
         {/* Search and Controls */}
@@ -361,6 +478,17 @@ const AppointmentList = () => {
                   letterSpacing: '0.1em',
                   borderBottom: '2px solid rgba(255, 255, 255, 0.2)'
                 }}>
+                  Location
+                </th>
+                <th style={{
+                  padding: '24px 20px',
+                  textAlign: 'center',
+                  fontWeight: '700',
+                  fontSize: '13px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                  borderBottom: '2px solid rgba(255, 255, 255, 0.2)'
+                }}>
                   Status
                 </th>
                 <th style={{
@@ -379,7 +507,7 @@ const AppointmentList = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="8" style={{
+                  <td colSpan="9" style={{
                     padding: '40px',
                     textAlign: 'center',
                     color: '#6b7280',
@@ -390,7 +518,7 @@ const AppointmentList = () => {
                 </tr>
               ) : filteredAppointments.length === 0 ? (
                 <tr>
-                  <td colSpan="8" style={{
+                  <td colSpan="9" style={{
                     padding: '40px',
                     textAlign: 'center',
                     color: '#6b7280',
@@ -402,6 +530,7 @@ const AppointmentList = () => {
               ) : (
                 paginatedAppointments.map((appointment) => {
                   const statusBadge = getStatusBadge(appointment.status);
+                  const displayStatus = getDisplayStatus(appointment.status);
 
                 return (
                   <tr key={appointment.id} style={{
@@ -464,6 +593,15 @@ const AppointmentList = () => {
                       fontWeight: '500'
                     }}>{appointment.reason || 'General consultation'}</td>
                     <td style={{
+                      padding: '20px',
+                      textAlign: 'center',
+                      color: '#475569',
+                      fontSize: '14px',
+                      fontWeight: '500'
+                    }}>
+                      {appointment.place_bitten || 'N/A'}
+                    </td>
+                    <td style={{
                       padding: '20px'
                     }}>
                       <span style={{
@@ -476,137 +614,92 @@ const AppointmentList = () => {
                         textTransform: 'capitalize',
                         boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
                       }}>
-                        {appointment.status || 'pending'}
+                        {displayStatus}
                       </span>
                     </td>
                     <td style={{
-                      padding: '20px',
+                      padding: '16px',
+                      verticalAlign: 'middle',
                       textAlign: 'center'
                     }}>
-                      <div 
-                        className="dropdown-container"
-                        style={{
-                          position: 'relative',
-                          display: 'inline-block'
-                        }}
-                      >
+                      <div style={{
+                        display: 'flex',
+                        gap: '8px',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                      }}>
                         <button
-                          onClick={() => setOpenDropdown(openDropdown === appointment.id ? null : appointment.id)}
+                          onClick={() => handleViewDetails(appointment)}
                           style={{
-                            padding: '12px 20px',
-                            backgroundColor: '#3b82f6',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '10px',
+                            padding: '8px 16px',
+                            backgroundColor: '#eff6ff',
+                            color: '#1e40af',
+                            border: '1px solid #bfdbfe',
+                            borderRadius: '8px',
                             fontSize: '13px',
-                            fontWeight: '600',
+                            fontWeight: '500',
                             cursor: 'pointer',
+                            transition: 'all 0.2s ease',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '8px',
-                            transition: 'all 0.2s ease',
-                            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+                            gap: '6px',
+                            boxShadow: '0 1px 3px rgba(59, 130, 246, 0.1)'
                           }}
                           onMouseEnter={(e) => {
+                            e.target.style.backgroundColor = '#dbeafe';
+                            e.target.style.borderColor = '#93c5fd';
                             e.target.style.transform = 'translateY(-1px)';
-                            e.target.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+                            e.target.style.boxShadow = '0 4px 6px rgba(59, 130, 246, 0.2)';
                           }}
                           onMouseLeave={(e) => {
+                            e.target.style.backgroundColor = '#eff6ff';
+                            e.target.style.borderColor = '#bfdbfe';
                             e.target.style.transform = 'translateY(0)';
-                            e.target.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                            e.target.style.boxShadow = '0 1px 3px rgba(59, 130, 246, 0.1)';
                           }}
                         >
-                          <span style={{
-                            fontSize: '14px'
-                          }}>⚙️</span>
-                          Actions
-                          <span style={{
-                            fontSize: '10px',
-                            transition: 'transform 0.2s ease',
-                            transform: openDropdown === appointment.id ? 'rotate(180deg)' : 'rotate(0deg)',
-                            color: 'white'
-                          }}>
-                            ▼
-                          </span>
+                          <FaEye size={12} />
+                          View Details
                         </button>
                         
-                        {openDropdown === appointment.id && (
-                          <div style={{
-                            position: 'absolute',
-                            top: '100%',
-                            right: '0',
-                            backgroundColor: 'white',
-                            border: '1px solid #e5e7eb',
-                            borderRadius: '8px',
-                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-                            zIndex: 1000,
-                            minWidth: '140px',
-                            marginTop: '4px'
-                          }}>
-                            <button
-                              onClick={() => handleViewDetails(appointment)}
-                              style={{
-                                width: '100%',
-                                padding: '12px 16px',
-                                backgroundColor: 'transparent',
-                                color: '#1e293b',
-                                border: 'none',
-                                textAlign: 'left',
-                                fontSize: '14px',
-                                fontWeight: '500',
-                                cursor: 'pointer',
-                                borderBottom: '1px solid #f1f5f9',
-                                transition: 'all 0.2s ease',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px'
-                              }}
-                              onMouseEnter={(e) => {
-                                e.target.style.backgroundColor = '#f8fafc';
-                                e.target.style.color = '#3b82f6';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.target.style.backgroundColor = 'transparent';
-                                e.target.style.color = '#1e293b';
-                              }}
-                            >
-                              <FaCog style={{
-                                color: 'white',
-                                fontSize: '14px',
-                                marginRight: '8px'
-                              }} />
-                              Actions
-                            </button>
-                            {appointment.status !== 'confirmed' && (
-                              <button
-                                onClick={() => {
-                                  handleConfirmAppointment(
-                                    appointment.id,
-                                    appointment.patient_email,
-                                    appointment.patient_name
-                                  );
-                                }}
-                                style={{
-                                  width: '100%',
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.target.style.backgroundColor = '#f0fdf4';
-                                  e.target.style.color = '#059669';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.target.style.backgroundColor = 'transparent';
-                                  e.target.style.color = '#10b981';
-                                }}
-                              >
-                                <FaCheck style={{
-                                  fontSize: '14px',
-                                  marginRight: '8px',
-                                  color: '#10b981'
-                                }} />
-                                Confirm Appointment
-                              </button>
-                            )}
-                          </div>
+                        {appointment.status !== 'confirmed' && appointment.status !== 'completed' && (
+                          <button
+                            onClick={() => {
+                              handleConfirmAppointment(
+                                appointment.id,
+                                appointment.patient_email,
+                                appointment.patient_name
+                              );
+                            }}
+                            style={{
+                              padding: '8px 16px',
+                              background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '8px',
+                              fontSize: '13px',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              boxShadow: '0 2px 4px rgba(59, 130, 246, 0.2)'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.background = 'linear-gradient(135deg, #2563eb 0%, #1e40af 100%)';
+                              e.target.style.transform = 'translateY(-1px)';
+                              e.target.style.boxShadow = '0 4px 8px rgba(59, 130, 246, 0.3)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.background = 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)';
+                              e.target.style.transform = 'translateY(0)';
+                              e.target.style.boxShadow = '0 2px 4px rgba(59, 130, 246, 0.2)';
+                            }}
+                          >
+                            <FaCheck size={12} />
+                            Confirm
+                          </button>
                         )}
                       </div>
                     </td>
@@ -1028,7 +1121,7 @@ const AppointmentList = () => {
               >
                 Close
               </button>
-              {selectedAppointment.status !== 'confirmed' && (
+              {selectedAppointment.status !== 'confirmed' && selectedAppointment.status !== 'completed' && (
                 <button
                   onClick={() => {
                     handleConfirmAppointment(

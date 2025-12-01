@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS public.treatment_records (
   appointment_id UUID REFERENCES public.appointments(id) ON DELETE CASCADE,
   
   -- Patient Information
-  patient_user_id UUID REFERENCES auth.users(id), -- Link to patient's user account
+  user_id UUID REFERENCES auth.users(id), -- Link to patient's user account
   patient_name TEXT,
   patient_contact TEXT,
   patient_address TEXT,
@@ -80,7 +80,7 @@ CREATE POLICY "Staff can update treatment records" ON public.treatment_records
 CREATE POLICY "Patients can view their own treatment records" ON public.treatment_records
   FOR SELECT USING (
     -- Primary: Direct user ID match (for authenticated patients)
-    patient_user_id = auth.uid() OR
+    user_id = auth.uid() OR
     -- Fallback: Allow access if the patient's contact matches
     patient_contact = (auth.jwt() ->> 'phone') OR
     -- Or if they provide contact in a custom claim
@@ -90,4 +90,4 @@ CREATE POLICY "Patients can view their own treatment records" ON public.treatmen
 -- Create index for better performance
 CREATE INDEX IF NOT EXISTS idx_treatment_records_appointment_id ON public.treatment_records(appointment_id);
 CREATE INDEX IF NOT EXISTS idx_treatment_records_created_at ON public.treatment_records(created_at);
-CREATE INDEX IF NOT EXISTS idx_treatment_records_patient_user_id ON public.treatment_records(patient_user_id);
+CREATE INDEX IF NOT EXISTS idx_treatment_records_user_id ON public.treatment_records(user_id);

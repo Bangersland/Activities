@@ -19,6 +19,18 @@ const AdminDashboard = ({ onLogout }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
 
+  const menuItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: <FaTachometerAlt />, routeName: 'admin-dashboard' },
+    { id: 'appointment-list', label: 'Appointment List', icon: <FaCalendarCheck />, routeName: 'admin-appointment-list' },
+    { id: 'patient-list', label: 'Patient History', icon: <FaUsers />, routeName: 'admin-patient-list' },
+    // { id: 'patient-payments', label: 'Patient Payments', icon: <FaMoneyBill />, routeName: 'admin-patient-payments' },
+    { id: 'staff', label: 'Staff', icon: <FaUserMd />, routeName: 'admin-staff' },
+    { id: 'schedule', label: 'Schedule', icon: <FaCalendarAlt />, routeName: 'admin-schedule' },
+    { id: 'vaccine-management', label: 'Vaccine Management', icon: <FaSyringe />, routeName: 'admin-vaccine-management' },
+    { id: 'analytics-reports', label: 'Analytics Reports', icon: <FaChartBar />, routeName: 'admin-analytics-reports' },
+    { id: 'map', label: 'Map', icon: <FaMapMarkedAlt />, routeName: 'admin-map' }
+  ];
+
   useEffect(() => {
     // Get current user
     const getUser = async () => {
@@ -35,40 +47,87 @@ const AdminDashboard = ({ onLogout }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: <FaTachometerAlt /> },
-    { id: 'appointment-list', label: 'Appointment List', icon: <FaCalendarCheck /> },
-    { id: 'patient-list', label: 'Patient History', icon: <FaUsers /> },
-    // { id: 'patient-payments', label: 'Patient Payments', icon: <FaMoneyBill /> },
-    { id: 'staff', label: 'Staff', icon: <FaUserMd /> },
-    { id: 'schedule', label: 'Schedule', icon: <FaCalendarAlt /> },
-    { id: 'vaccine-management', label: 'Vaccine Management', icon: <FaSyringe /> },
-    { id: 'analytics-reports', label: 'Analytics Reports', icon: <FaChartBar /> },
-    { id: 'map', label: 'Map', icon: <FaMapMarkedAlt /> }
-  ];
+  // Sync URL with active section on mount and when section changes
+  useEffect(() => {
+    const currentRoute = menuItems.find(item => item.id === activeSection);
+    const routeName = currentRoute?.routeName || 'admin-dashboard';
+    
+    // Update URL without page reload
+    const newUrl = `/${routeName}`;
+    if (window.location.pathname !== newUrl) {
+      window.history.pushState({ route: routeName, section: activeSection }, '', newUrl);
+    }
+  }, [activeSection, menuItems]);
+
+  // Handle browser back/forward buttons
+  useEffect(() => {
+    const handlePopState = (event) => {
+      if (event.state && event.state.section) {
+        setActiveSection(event.state.section);
+      } else {
+        // Parse URL to determine section
+        const path = window.location.pathname;
+        const routeFromUrl = path.replace('/', '');
+        const menuItem = menuItems.find(item => item.routeName === routeFromUrl);
+        if (menuItem) {
+          setActiveSection(menuItem.id);
+        }
+      }
+    };
+
+    // Check initial URL on mount
+    const path = window.location.pathname;
+    if (path !== '/' && path !== '/admin-dashboard') {
+      const routeFromUrl = path.replace('/', '');
+      const menuItem = menuItems.find(item => item.routeName === routeFromUrl);
+      if (menuItem) {
+        setActiveSection(menuItem.id);
+      }
+    }
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [menuItems]);
+
+  // Track route changes for debugging
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      const currentRoute = menuItems.find(item => item.id === activeSection);
+      const routeName = currentRoute?.routeName || 'admin-unknown';
+      console.log(`[AdminDashboard] Active route: ${routeName} | Section ID: ${activeSection}`);
+    }
+  }, [activeSection, menuItems]);
 
   const renderContent = () => {
+    const currentRoute = menuItems.find(item => item.id === activeSection);
+    const routeName = currentRoute?.routeName || 'admin-unknown';
+    
+    // Log route change for debugging
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[AdminDashboard] Route changed to: ${routeName} (section: ${activeSection})`);
+    }
+    
     switch (activeSection) {
       case 'dashboard':
-        return <Dashboard />;
+        return <div data-route-name={routeName} data-section-id="dashboard"><Dashboard /></div>;
       case 'appointment-list':
-        return <AppointmentList />;
+        return <div data-route-name={routeName} data-section-id="appointment-list"><AppointmentList /></div>;
       case 'patient-list':
-        return <PatientList />;
+        return <div data-route-name={routeName} data-section-id="patient-list"><PatientList /></div>;
       case 'patient-payments':
-        return <PatientPayments />;
+        return <div data-route-name={routeName} data-section-id="patient-payments"><PatientPayments /></div>;
       case 'staff':
-        return <Staff />;
+        return <div data-route-name={routeName} data-section-id="staff"><Staff /></div>;
       case 'schedule':
-        return <Schedule />;
+        return <div data-route-name={routeName} data-section-id="schedule"><Schedule /></div>;
       case 'vaccine-management':
-        return <VaccineManagement />;
+        return <div data-route-name={routeName} data-section-id="vaccine-management"><VaccineManagement /></div>;
       case 'analytics-reports':
-        return <AnalyticsReports />;
+        return <div data-route-name={routeName} data-section-id="analytics-reports"><AnalyticsReports /></div>;
       case 'map':
-        return <Map />;
+        return <div data-route-name={routeName} data-section-id="map"><Map /></div>;
       default:
-        return <Dashboard />;
+        return <div data-route-name="admin-default" data-section-id="dashboard"><Dashboard /></div>;
     }
   };
 
@@ -105,7 +164,14 @@ const AdminDashboard = ({ onLogout }) => {
             <button
               key={item.id}
               className={`nav-item ${activeSection === item.id ? 'active' : ''}`}
-              onClick={() => setActiveSection(item.id)}
+              onClick={() => {
+                setActiveSection(item.id);
+                // Update URL immediately
+                window.history.pushState({ route: item.routeName, section: item.id }, '', `/${item.routeName}`);
+              }}
+              data-route-name={item.routeName}
+              data-section-id={item.id}
+              title={`Route: ${item.routeName}`}
             >
               <span className="nav-icon">{item.icon}</span>
               {isSidebarOpen && <span className="nav-label">{item.label}</span>}
@@ -120,7 +186,7 @@ const AdminDashboard = ({ onLogout }) => {
           user={currentUser} 
           onLogout={onLogout}
         />
-        <main className="content-main">
+        <main className="content-main" data-current-route={activeSection}>
           {renderContent()}
         </main>
       </div>

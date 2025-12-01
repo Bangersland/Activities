@@ -1,9 +1,154 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
+import * as XLSX from 'xlsx';
 
 const PatientList = () => {
+  const printRef = useRef(null);
+  
+  // Sample patient data - replace with actual data from database
+  const [patients] = useState([
+    { id: 'P001', name: 'Juan Dela Cruz', age: 35, gender: 'Male', barangay: 'Barangay 1', contact: '09123456789', lastVisit: '2024-01-15', status: 'Active' },
+    { id: 'P002', name: 'Maria Santos', age: 28, gender: 'Female', barangay: 'Barangay 2', contact: '09234567890', lastVisit: '2024-01-10', status: 'Active' },
+    { id: 'P003', name: 'Pedro Reyes', age: 45, gender: 'Male', barangay: 'Barangay 3', contact: '09345678901', lastVisit: '2024-01-08', status: 'Inactive' },
+    { id: 'P004', name: 'Ana Garcia', age: 32, gender: 'Female', barangay: 'Barangay 1', contact: '09456789012', lastVisit: '2024-01-12', status: 'Active' },
+    { id: 'P005', name: 'Luis Martinez', age: 50, gender: 'Male', barangay: 'Barangay 4', contact: '09567890123', lastVisit: '2024-01-05', status: 'Active' },
+    { id: 'P006', name: 'Carmen Lopez', age: 38, gender: 'Female', barangay: 'Barangay 2', contact: '09678901234', lastVisit: '2024-01-14', status: 'Active' },
+    { id: 'P007', name: 'Roberto Torres', age: 42, gender: 'Male', barangay: 'Barangay 5', contact: '09789012345', lastVisit: '2024-01-03', status: 'Inactive' },
+    { id: 'P008', name: 'Isabel Flores', age: 29, gender: 'Female', barangay: 'Barangay 3', contact: '09890123456', lastVisit: '2024-01-11', status: 'Active' },
+  ]);
+
+  // Export to Excel
+  const exportToExcel = () => {
+    // Prepare data for Excel
+    const excelData = patients.map(patient => ({
+      'Patient ID': patient.id,
+      'Name': patient.name,
+      'Age': patient.age,
+      'Gender': patient.gender,
+      'Barangay': patient.barangay,
+      'Contact': patient.contact,
+      'Last Visit': patient.lastVisit,
+      'Status': patient.status
+    }));
+
+    // Create workbook and worksheet
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Patient List');
+
+    // Set column widths
+    const columnWidths = [
+      { wch: 12 }, // Patient ID
+      { wch: 20 }, // Name
+      { wch: 6 },  // Age
+      { wch: 10 }, // Gender
+      { wch: 15 }, // Barangay
+      { wch: 15 }, // Contact
+      { wch: 12 }, // Last Visit
+      { wch: 10 }  // Status
+    ];
+    worksheet['!cols'] = columnWidths;
+
+    // Generate filename with current date
+    const fileName = `Patient_List_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    // Save file
+    XLSX.writeFile(workbook, fileName);
+  };
+
+  // Print function
+  const handlePrint = () => {
+    const printContent = printRef.current;
+    
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank');
+    
+    // Get styles from current page
+    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map(style => style.outerHTML)
+      .join('');
+    
+    // Create print-friendly HTML
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Patient List - Print</title>
+          ${styles}
+          <style>
+            @media print {
+              body { margin: 0; padding: 20px; }
+              .no-print { display: none !important; }
+              table { width: 100%; border-collapse: collapse; }
+              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+              th { background-color: #f2f2f2; font-weight: bold; }
+              .status-active { color: green; }
+              .status-inactive { color: red; }
+              h2 { margin-top: 0; }
+            }
+            body { font-family: Arial, sans-serif; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; font-weight: bold; }
+            .status-active { color: green; }
+            .status-inactive { color: red; }
+            h2 { margin-top: 0; }
+            .print-header { margin-bottom: 20px; }
+            .print-date { color: #666; font-size: 14px; }
+          </style>
+        </head>
+        <body>
+          <div class="print-header">
+            <h2>Patient List</h2>
+            <div class="print-date">Generated on: ${new Date().toLocaleString()}</div>
+          </div>
+          ${printContent.innerHTML}
+        </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    
+    // Wait for content to load, then print
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
+  };
+
   return (
     <div className="content-section">
-      <h2>Patient List</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2>Patient List</h2>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button 
+            onClick={exportToExcel}
+            className="btn-secondary"
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px',
+              padding: '10px 20px',
+              cursor: 'pointer'
+            }}
+          >
+            <span>📥</span>
+            <span>Export to Excel</span>
+          </button>
+          <button 
+            onClick={handlePrint}
+            className="btn-secondary"
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px',
+              padding: '10px 20px',
+              cursor: 'pointer'
+            }}
+          >
+            <span>🖨️</span>
+            <span>Print</span>
+          </button>
+        </div>
+      </div>
       
       {/* Search and Filter Section */}
       <div className="search-filter-section">
@@ -68,7 +213,7 @@ const PatientList = () => {
       </div>
       
       {/* Patient History Table */}
-      <div className="table-container">
+      <div className="table-container" ref={printRef}>
         <table className="patient-table">
           <thead>
             <tr>
@@ -80,114 +225,29 @@ const PatientList = () => {
               <th>Contact</th>
               <th>Last Visit</th>
               <th>Status</th>
-              <th>Actions</th>
+              <th className="no-print">Actions</th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td>P001</td>
-              <td>Juan Dela Cruz</td>
-              <td>35</td>
-              <td>Male</td>
-              <td>Barangay 1</td>
-              <td>09123456789</td>
-              <td>2024-01-15</td>
-              <td><span className="status-active">Active</span></td>
-              <td>
-                <button className="action-btn view-btn">View</button>
-              </td>
-            </tr>
-            <tr>
-              <td>P002</td>
-              <td>Maria Santos</td>
-              <td>28</td>
-              <td>Female</td>
-              <td>Barangay 2</td>
-              <td>09234567890</td>
-              <td>2024-01-10</td>
-              <td><span className="status-active">Active</span></td>
-              <td>
-                <button className="action-btn view-btn">View</button>
-              </td>
-            </tr>
-            <tr>
-              <td>P003</td>
-              <td>Pedro Reyes</td>
-              <td>45</td>
-              <td>Male</td>
-              <td>Barangay 3</td>
-              <td>09345678901</td>
-              <td>2024-01-08</td>
-              <td><span className="status-inactive">Inactive</span></td>
-              <td>
-                <button className="action-btn view-btn">View</button>
-              </td>
-            </tr>
-            <tr>
-              <td>P004</td>
-              <td>Ana Garcia</td>
-              <td>32</td>
-              <td>Female</td>
-              <td>Barangay 1</td>
-              <td>09456789012</td>
-              <td>2024-01-12</td>
-              <td><span className="status-active">Active</span></td>
-              <td>
-                <button className="action-btn view-btn">View</button>
-              </td>
-            </tr>
-            <tr>
-              <td>P005</td>
-              <td>Luis Martinez</td>
-              <td>50</td>
-              <td>Male</td>
-              <td>Barangay 4</td>
-              <td>09567890123</td>
-              <td>2024-01-05</td>
-              <td><span className="status-active">Active</span></td>
-              <td>
-                <button className="action-btn view-btn">View</button>
-              </td>
-            </tr>
-            <tr>
-              <td>P006</td>
-              <td>Carmen Lopez</td>
-              <td>38</td>
-              <td>Female</td>
-              <td>Barangay 2</td>
-              <td>09678901234</td>
-              <td>2024-01-14</td>
-              <td><span className="status-active">Active</span></td>
-              <td>
-                <button className="action-btn view-btn">View</button>
-              </td>
-            </tr>
-            <tr>
-              <td>P007</td>
-              <td>Roberto Torres</td>
-              <td>42</td>
-              <td>Male</td>
-              <td>Barangay 5</td>
-              <td>09789012345</td>
-              <td>2024-01-03</td>
-              <td><span className="status-inactive">Inactive</span></td>
-              <td>
-                <button className="action-btn view-btn">View</button>
-              </td>
-            </tr>
-            <tr>
-              <td>P008</td>
-              <td>Isabel Flores</td>
-              <td>29</td>
-              <td>Female</td>
-              <td>Barangay 3</td>
-              <td>09890123456</td>
-              <td>2024-01-11</td>
-              <td><span className="status-active">Active</span></td>
-              <td>
-                <button className="action-btn view-btn">View</button>
-              </td>
-            </tr>
+            {patients.map((patient) => (
+              <tr key={patient.id}>
+                <td>{patient.id}</td>
+                <td>{patient.name}</td>
+                <td>{patient.age}</td>
+                <td>{patient.gender}</td>
+                <td>{patient.barangay}</td>
+                <td>{patient.contact}</td>
+                <td>{patient.lastVisit}</td>
+                <td>
+                  <span className={patient.status === 'Active' ? 'status-active' : 'status-inactive'}>
+                    {patient.status}
+                  </span>
+                </td>
+                <td className="no-print">
+                  <button className="action-btn view-btn">View</button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

@@ -13,7 +13,8 @@ const VaccineManagement = () => {
   const [formData, setFormData] = useState({
     vaccine_brand: '',
     stock_quantity: 0,
-    expiry_date: ''
+    expiry_date: '',
+    people_per_vaccine: 1
   });
   const [alerts, setAlerts] = useState([]);
   const [showAlerts, setShowAlerts] = useState(false);
@@ -110,7 +111,8 @@ const VaccineManagement = () => {
     setFormData({
       vaccine_brand: vaccine.vaccine_brand,
       stock_quantity: vaccine.stock_quantity,
-      expiry_date: vaccine.expiry_date
+      expiry_date: vaccine.expiry_date,
+      people_per_vaccine: vaccine.people_per_vaccine || 1
     });
     setIsEditModalOpen(true);
   };
@@ -119,7 +121,8 @@ const VaccineManagement = () => {
     setFormData({
       vaccine_brand: '',
       stock_quantity: 0,
-      expiry_date: ''
+      expiry_date: '',
+      people_per_vaccine: 1
     });
   };
 
@@ -127,10 +130,8 @@ const VaccineManagement = () => {
     switch (status) {
       case 'Available':
         return 'status-available';
-      case 'Low on Stock':
+      case 'Low':
         return 'status-low-stock';
-      case 'Out of Stock':
-        return 'status-out-of-stock';
       case 'Expired':
         return 'status-expired';
       default:
@@ -156,28 +157,32 @@ const VaccineManagement = () => {
   const isExpired = (expiryDate) => {
     const expiry = new Date(expiryDate);
     const today = new Date();
-    return expiry < today;
+    today.setHours(0, 0, 0, 0); // Reset time to compare dates only
+    expiry.setHours(0, 0, 0, 0);
+    return expiry <= today;
+  };
+
+  const calculateStatus = (stockQuantity, expiryDate) => {
+    if (isExpired(expiryDate)) {
+      return 'Expired';
+    } else if (stockQuantity > 20) {
+      return 'Available';
+    } else {
+      return 'Low';
+    }
   };
 
   const checkForAlerts = useCallback(() => {
     const newAlerts = [];
     vaccines.forEach(vaccine => {
-      // Check for low stock (20 or less)
-      if (vaccine.stock_quantity <= 20 && vaccine.stock_quantity > 0) {
+      const vaccineExpired = isExpired(vaccine.expiry_date);
+      
+      // Check for low stock (20 or less) - only if not expired
+      if (!vaccineExpired && vaccine.stock_quantity <= 20) {
         newAlerts.push({
           id: `low-stock-${vaccine.id}`,
           type: 'warning',
           message: `⚠️ Low stock alert: ${vaccine.vaccine_brand} has only ${vaccine.stock_quantity} units remaining`,
-          vaccine: vaccine
-        });
-      }
-      
-      // Check for out of stock
-      if (vaccine.stock_quantity === 0) {
-        newAlerts.push({
-          id: `out-of-stock-${vaccine.id}`,
-          type: 'error',
-          message: `🚨 Out of stock: ${vaccine.vaccine_brand} has no units available`,
           vaccine: vaccine
         });
       }
@@ -197,7 +202,7 @@ const VaccineManagement = () => {
       }
       
       // Check for expired
-      if (isExpired(vaccine.expiry_date)) {
+      if (vaccineExpired) {
         newAlerts.push({
           id: `expired-${vaccine.id}`,
           type: 'error',
@@ -343,8 +348,8 @@ const VaccineManagement = () => {
                       </span>
                     </td>
                     <td>
-                      <span className={`status-badge ${getStatusColor(vaccine.status)}`}>
-                        {vaccine.status}
+                      <span className={`status-badge ${getStatusColor(calculateStatus(vaccine.stock_quantity, vaccine.expiry_date))}`}>
+                        {calculateStatus(vaccine.stock_quantity, vaccine.expiry_date)}
                       </span>
                 </td>
                     <td>
@@ -423,6 +428,17 @@ const VaccineManagement = () => {
                     required
                   />
                 </div>
+                <div className="form-group">
+                  <label>How many people can share this vaccine?</label>
+                  <input
+                    type="number"
+                    value={formData.people_per_vaccine}
+                    onChange={(e) => setFormData({ ...formData, people_per_vaccine: parseInt(e.target.value) || 1 })}
+                    placeholder="Enter number of people"
+                    min="1"
+                    required
+                  />
+                </div>
               </div>
               <div className="modal-footer">
                 <button onClick={() => setIsModalOpen(false)} className="cancel-btn">
@@ -498,6 +514,17 @@ const VaccineManagement = () => {
                     type="date"
                     value={formData.expiry_date}
                     onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>How many people can share this vaccine?</label>
+                  <input
+                    type="number"
+                    value={formData.people_per_vaccine}
+                    onChange={(e) => setFormData({ ...formData, people_per_vaccine: parseInt(e.target.value) || 1 })}
+                    placeholder="Enter number of people"
+                    min="1"
                     required
                   />
                 </div>
