@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { getAllAppointments, getVaccines, createTreatmentRecord, updateAppointmentStatus, getCurrentUser, getTreatmentRecordByAppointmentId, getTreatmentRecords } from '../supabase';
-import { FaEye, FaTimes } from 'react-icons/fa';
+import { getAllAppointments, getVaccines, createTreatmentRecord, updateAppointmentStatus, getCurrentUser, getTreatmentRecordByAppointmentId, getTreatmentRecords, autoCreateTreatmentRecordsForAppointmentsWithoutContact } from '../supabase';
+import { FaEye, FaTimes, FaSync } from 'react-icons/fa';
 
 const StaffAppointmentList = () => {
   const [activeTab, setActiveTab] = useState('upcoming');
@@ -33,6 +33,7 @@ const StaffAppointmentList = () => {
     status_of_animal: '',
     remarks: ''
   });
+  const [autoCreating, setAutoCreating] = useState(false);
 
   // Fetch appointments and vaccines on component mount
   useEffect(() => {
@@ -305,6 +306,35 @@ const StaffAppointmentList = () => {
     }
   };
 
+  const handleAutoCreateTreatmentRecords = async () => {
+    if (autoCreating) return;
+    
+    const confirm = window.confirm(
+      'This will automatically create treatment records for all completed appointments that don\'t have one yet, including patients without contact information. Continue?'
+    );
+    
+    if (!confirm) return;
+    
+    try {
+      setAutoCreating(true);
+      const { data, error, message } = await autoCreateTreatmentRecordsForAppointmentsWithoutContact();
+      
+      if (error) {
+        alert(`Error: ${error.message || 'Failed to create treatment records'}`);
+        console.error('Error auto-creating treatment records:', error);
+      } else {
+        alert(message || `Successfully created ${data?.length || 0} treatment record(s)`);
+        // Refresh appointments to show updated data
+        await fetchAppointments();
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('An error occurred while creating treatment records');
+    } finally {
+      setAutoCreating(false);
+    }
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'Upcoming':
@@ -325,6 +355,12 @@ const StaffAppointmentList = () => {
       padding: '20px',
       width: '100%'
     }}>
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
       <div style={{
         backgroundColor: 'white',
         borderRadius: '12px',
@@ -335,7 +371,10 @@ const StaffAppointmentList = () => {
       }}>
         {/* Header */}
         <div style={{
-          marginBottom: '24px'
+          marginBottom: '24px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
         }}>
           <h2 style={{
             margin: '0 0 8px 0',
@@ -345,6 +384,28 @@ const StaffAppointmentList = () => {
           }}>
             All Appointments
           </h2>
+          <button
+            onClick={handleAutoCreateTreatmentRecords}
+            disabled={autoCreating}
+            style={{
+              padding: '10px 16px',
+              backgroundColor: autoCreating ? '#9ca3af' : '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: autoCreating ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.2s ease'
+            }}
+            title="Automatically create treatment records for completed appointments without contact info"
+          >
+            <FaSync style={{ animation: autoCreating ? 'spin 1s linear infinite' : 'none' }} />
+            {autoCreating ? 'Creating...' : 'Auto-Create Records'}
+          </button>
         </div>
 
         {/* Navigation Tabs */}

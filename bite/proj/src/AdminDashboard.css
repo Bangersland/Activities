@@ -33,6 +33,14 @@ body {
   width: 280px;
   min-width: 280px;
   border-radius: 0 20px 20px 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 1000;
 }
 
 .sidebar.open {
@@ -253,14 +261,15 @@ body {
   flex-direction: column;
   min-width: 0;
   transition: all 0.3s ease;
+  margin-left: 280px;
 }
 
 .main-content.sidebar-open {
-  margin-left: 0;
+  margin-left: 280px;
 }
 
 .main-content.sidebar-closed {
-  margin-left: 0;
+  margin-left: 80px;
 }
 
 .content-header {
@@ -1186,6 +1195,8 @@ body {
     border-right: none;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 0;
+    position: relative;
+    left: auto;
   }
   
   .sidebar.open {
@@ -1197,9 +1208,17 @@ body {
   }
   
   .main-content {
-    margin: 0;
+    margin-left: 0 !important;
     border-radius: 0;
     flex: 1;
+  }
+  
+  .main-content.sidebar-open {
+    margin-left: 0 !important;
+  }
+  
+  .main-content.sidebar-closed {
+    margin-left: 0 !important;
   }
   
   .content-grid {

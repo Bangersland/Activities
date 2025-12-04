@@ -1137,6 +1137,123 @@ export const updateAppointmentStatus = async (appointmentId, status) => {
   }
 };
 
+// Function to automatically create treatment records for completed appointments without contact info
+export const autoCreateTreatmentRecordsForAppointmentsWithoutContact = async () => {
+  try {
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return { data: null, error: { message: 'User not authenticated' } };
+    }
+
+    // Get all completed appointments
+    const { data: completedAppointments, error: appointmentsError } = await supabase
+      .from('appointments')
+      .select('*')
+      .eq('status', 'completed');
+
+    if (appointmentsError) {
+      return { data: null, error: appointmentsError };
+    }
+
+    if (!completedAppointments || completedAppointments.length === 0) {
+      return { data: [], error: null, message: 'No completed appointments found' };
+    }
+
+    // Get all existing treatment records
+    const { data: existingRecords, error: recordsError } = await supabase
+      .from('treatment_records')
+      .select('appointment_id, patient_contact');
+
+    if (recordsError) {
+      return { data: null, error: recordsError };
+    }
+
+    // Create a set of appointment IDs and contacts that already have treatment records
+    const existingAppointmentIds = new Set(
+      existingRecords?.map(r => r.appointment_id).filter(Boolean) || []
+    );
+    const existingContacts = new Set(
+      existingRecords?.map(r => r.patient_contact).filter(Boolean) || []
+    );
+
+    // Filter appointments that:
+    // 1. Don't have a treatment record (by appointment_id)
+    // 2. Don't have contact info OR have contact info but no treatment record for that contact
+    const appointmentsToProcess = completedAppointments.filter(apt => {
+      // Skip if already has treatment record by appointment_id
+      if (apt.id && existingAppointmentIds.has(apt.id)) {
+        return false;
+      }
+      
+      // If has contact, check if there's already a record for this contact
+      if (apt.patient_contact && existingContacts.has(apt.patient_contact)) {
+        return false;
+      }
+      
+      return true;
+    });
+
+    if (appointmentsToProcess.length === 0) {
+      return { data: [], error: null, message: 'All appointments already have treatment records' };
+    }
+
+    // Create treatment records for each appointment
+    const treatmentRecords = appointmentsToProcess.map(appointment => ({
+      appointment_id: appointment.id,
+      user_id: appointment.user_id || null,
+      patient_name: appointment.patient_name || 'Unknown',
+      patient_contact: appointment.patient_contact || null, // Allow null for patients without contact
+      patient_address: appointment.patient_address || null,
+      patient_age: appointment.patient_age || null,
+      patient_sex: appointment.patient_sex || null,
+      appointment_date: appointment.appointment_date || null,
+      date_bitten: appointment.date_bitten || null,
+      time_bitten: appointment.time_bitten || null,
+      site_of_bite: appointment.site_of_bite || null,
+      biting_animal: appointment.biting_animal || null,
+      animal_status: appointment.animal_status || null,
+      place_bitten_barangay: appointment.place_bitten || null,
+      provoked: appointment.provoke || null,
+      local_wound_treatment: appointment.washing_of_bite || appointment.local_wound_treatment || null,
+      type_of_exposure: null,
+      category_of_exposure: null,
+      vaccine_brand_name: null,
+      treatment_to_be_given: null,
+      route: null,
+      rig: null,
+      d0_date: null,
+      d3_date: null,
+      d7_date: null,
+      d14_date: null,
+      d28_30_date: null,
+      status_of_animal_date: null,
+      remarks: 'Auto-created treatment record',
+      created_by: user.id
+    }));
+
+    // Insert all treatment records
+    const { data: createdRecords, error: insertError } = await supabase
+      .from('treatment_records')
+      .insert(treatmentRecords)
+      .select();
+
+    if (insertError) {
+      console.error('Error creating treatment records:', insertError);
+      return { data: null, error: insertError };
+    }
+
+    return { 
+      data: createdRecords, 
+      error: null, 
+      message: `Successfully created ${createdRecords?.length || 0} treatment record(s)` 
+    };
+  } catch (error) {
+    console.error('Error:', error);
+    return { data: null, error };
+  }
+};
+
 export const getTreatmentRecords = async () => {
   try {
     const { data, error } = await supabase
