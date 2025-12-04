@@ -6,9 +6,9 @@ const Map = () => {
   const [barangayData, setBarangayData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [heatmapLayer, setHeatmapLayer] = useState(null);
-  const [showHeatmap, setShowHeatmap] = useState(true);
+  const [showHeatmap, setShowHeatmap] = useState(false);
   const [showMarkers, setShowMarkers] = useState(false); // Hide markers by default for cleaner look
-  const [showColoredAreas, setShowColoredAreas] = useState(true); // Show colored areas by default
+  const [showColoredAreas, setShowColoredAreas] = useState(false); // Do not auto-check colored areas
   const [highlightedBarangay, setHighlightedBarangay] = useState(null);
   const [coloredAreas, setColoredAreas] = useState([]);
   const mapRef = useRef(null);

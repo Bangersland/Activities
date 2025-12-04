@@ -564,73 +564,79 @@ const StaffPatientListTracker = () => {
                                           padding: '14px 12px',
                                           textAlign: 'center'
                                         }}>
-                                          {status !== 'completed' && (
-                                            <div style={{
-                                              display: 'flex',
-                                              flexDirection: 'column',
-                                              gap: '6px',
-                                              alignItems: 'center'
-                                            }}>
-                                              <button
-                                                onClick={() => handleUpdateStatus(patient.id, doseNumber, 'completed')}
-                                                style={{
-                                                  padding: '6px 10px',
-                                                  backgroundColor: '#10b981',
-                                                  color: 'white',
-                                                  border: 'none',
-                                                  borderRadius: '6px',
-                                                  fontSize: '11px',
-                                                  fontWeight: '600',
-                                                  cursor: 'pointer',
-                                                  width: '100%',
-                                                  transition: 'all 0.2s ease',
-                                                  boxShadow: '0 2px 4px rgba(16, 185, 129, 0.2)'
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                  e.target.style.backgroundColor = '#059669';
-                                                  e.target.style.transform = 'translateY(-1px)';
-                                                  e.target.style.boxShadow = '0 4px 6px rgba(16, 185, 129, 0.3)';
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                  e.target.style.backgroundColor = '#10b981';
-                                                  e.target.style.transform = 'translateY(0)';
-                                                  e.target.style.boxShadow = '0 2px 4px rgba(16, 185, 129, 0.2)';
-                                                }}
-                                              >
-                                                Complete
-                                              </button>
-                                              {status !== 'missed' && (
-                                                <button
-                                                  onClick={() => handleUpdateStatus(patient.id, doseNumber, 'missed')}
-                                                  style={{
-                                                    padding: '6px 10px',
-                                                    backgroundColor: '#ef4444',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    borderRadius: '6px',
-                                                    fontSize: '11px',
-                                                    fontWeight: '600',
-                                                    cursor: 'pointer',
-                                                    width: '100%',
-                                                    transition: 'all 0.2s ease',
-                                                    boxShadow: '0 2px 4px rgba(239, 68, 68, 0.2)'
-                                                  }}
-                                                  onMouseEnter={(e) => {
-                                                    e.target.style.backgroundColor = '#dc2626';
-                                                    e.target.style.transform = 'translateY(-1px)';
-                                                    e.target.style.boxShadow = '0 4px 6px rgba(239, 68, 68, 0.3)';
-                                                  }}
-                                                  onMouseLeave={(e) => {
-                                                    e.target.style.backgroundColor = '#ef4444';
-                                                    e.target.style.transform = 'translateY(0)';
-                                                    e.target.style.boxShadow = '0 2px 4px rgba(239, 68, 68, 0.2)';
-                                                  }}
-                                                >
-                                                  Missed
-                                                </button>
-                                              )}
-                                            </div>
-                                          )}
+                                          <div style={{
+                                            display: 'flex',
+                                            gap: '8px',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                          }}>
+                                            <button
+                                              onClick={() => handleUpdateStatus(patient.id, doseNumber, 'completed')}
+                                              style={{
+                                                padding: '8px',
+                                                backgroundColor: '#10b981',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                fontSize: '16px',
+                                                fontWeight: '600',
+                                                cursor: 'pointer',
+                                                width: '32px',
+                                                height: '32px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                transition: 'all 0.2s ease',
+                                                boxShadow: '0 2px 4px rgba(16, 185, 129, 0.2)'
+                                              }}
+                                              onMouseEnter={(e) => {
+                                                e.target.style.backgroundColor = '#059669';
+                                                e.target.style.transform = 'translateY(-1px)';
+                                                e.target.style.boxShadow = '0 4px 6px rgba(16, 185, 129, 0.3)';
+                                              }}
+                                              onMouseLeave={(e) => {
+                                                e.target.style.backgroundColor = '#10b981';
+                                                e.target.style.transform = 'translateY(0)';
+                                                e.target.style.boxShadow = '0 2px 4px rgba(16, 185, 129, 0.2)';
+                                              }}
+                                              title="Mark as Completed"
+                                            >
+                                              ✓
+                                            </button>
+                                            <button
+                                              onClick={() => handleUpdateStatus(patient.id, doseNumber, 'missed')}
+                                              style={{
+                                                padding: '8px',
+                                                backgroundColor: '#ef4444',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                fontSize: '16px',
+                                                fontWeight: '600',
+                                                cursor: 'pointer',
+                                                width: '32px',
+                                                height: '32px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                transition: 'all 0.2s ease',
+                                                boxShadow: '0 2px 4px rgba(239, 68, 68, 0.2)'
+                                              }}
+                                              onMouseEnter={(e) => {
+                                                e.target.style.backgroundColor = '#dc2626';
+                                                e.target.style.transform = 'translateY(-1px)';
+                                                e.target.style.boxShadow = '0 4px 6px rgba(239, 68, 68, 0.3)';
+                                              }}
+                                              onMouseLeave={(e) => {
+                                                e.target.style.backgroundColor = '#ef4444';
+                                                e.target.style.transform = 'translateY(0)';
+                                                e.target.style.boxShadow = '0 2px 4px rgba(239, 68, 68, 0.2)';
+                                              }}
+                                              title="Mark as Missed"
+                                            >
+                                              ×
+                                            </button>
+                                          </div>
                                         </td>
                                       </tr>
                                     );

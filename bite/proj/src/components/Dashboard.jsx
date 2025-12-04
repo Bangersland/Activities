@@ -1,42 +1,61 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FaUsers, FaCalendarAlt, FaExclamationTriangle, FaSyringe, FaUserMd } from 'react-icons/fa';
+import { getAllAppointments } from '../supabase';
 
 const Dashboard = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
-  
-  // Sample patient booking data for August 2025
-  const patientBookings = {
-    '2025-08-01': 0,
-    '2025-08-02': 0,
-    '2025-08-03': 0,
-    '2025-08-04': 20,
-    '2025-08-05': 0,
-    '2025-08-06': 0,
-    '2025-08-07': 20,
-    '2025-08-08': 0,
-    '2025-08-09': 0,
-    '2025-08-10': 0,
-    '2025-08-11': 0,
-    '2025-08-12': 0,
-    '2025-08-13': 0,
-    '2025-08-14': 0,
-    '2025-08-15': 0,
-    '2025-08-16': 0,
-    '2025-08-17': 0,
-    '2025-08-18': 0,
-    '2025-08-19': 0,
-    '2025-08-20': 0,
-    '2025-08-21': 0,
-    '2025-08-22': 0,
-    '2025-08-23': 0,
-    '2025-08-24': 0,
-    '2025-08-25': 0,
-    '2025-08-26': 0,
-    '2025-08-27': 0,
-    '2025-08-28': 0,
-    '2025-08-29': 0,
-    '2025-08-30': 0,
-    '2025-08-31': 0
+  const [patientBookings, setPatientBookings] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  // Helper function to format date as YYYY-MM-DD
+  const formatDate = (year, month, day) => {
+    const monthStr = (month + 1).toString().padStart(2, '0');
+    const dayStr = day.toString().padStart(2, '0');
+    return `${year}-${monthStr}-${dayStr}`;
+  };
+
+  // Fetch appointments and count bookings per date
+  useEffect(() => {
+    fetchAppointments();
+  }, []);
+
+  const fetchAppointments = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await getAllAppointments();
+      
+      if (error) {
+        console.error('Error fetching appointments:', error);
+        setPatientBookings({});
+      } else {
+        processAppointmentData(data || []);
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      setPatientBookings({});
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const processAppointmentData = (appointments) => {
+    const bookings = {};
+    
+    appointments.forEach(apt => {
+      if (apt.appointment_date) {
+        // Format date as YYYY-MM-DD
+        const date = new Date(apt.appointment_date);
+        if (!isNaN(date.getTime())) {
+          const year = date.getFullYear();
+          const month = date.getMonth();
+          const day = date.getDate();
+          const dateKey = formatDate(year, month, day);
+          bookings[dateKey] = (bookings[dateKey] || 0) + 1;
+        }
+      }
+    });
+    
+    setPatientBookings(bookings);
   };
 
   const getDaysInMonth = (date) => {
@@ -48,12 +67,6 @@ const Dashboard = () => {
     const startingDay = firstDay.getDay();
     
     return { daysInMonth, startingDay };
-  };
-
-  const formatDate = (year, month, day) => {
-    const monthStr = (month + 1).toString().padStart(2, '0');
-    const dayStr = day.toString().padStart(2, '0');
-    return `${year}-${monthStr}-${dayStr}`;
   };
 
   const goToPreviousMonth = () => {
@@ -89,8 +102,17 @@ const Dashboard = () => {
           <div className="day-content">
             <span className="day-number">{day}</span>
             {patientCount > 0 && (
-              <div className="patient-count">
-                {patientCount} patients
+              <div className="patient-count" style={{
+                fontSize: '12px',
+                fontWeight: '600',
+                color: '#3b82f6',
+                backgroundColor: '#eff6ff',
+                padding: '4px 6px',
+                borderRadius: '4px',
+                marginTop: '4px',
+                textAlign: 'center'
+              }}>
+                {patientCount} {patientCount === 1 ? 'booked' : 'booked'}
               </div>
             )}
           </div>
@@ -150,7 +172,7 @@ const Dashboard = () => {
               <FaUsers size={24} />
             </div>
             <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', color: 'white' }}>Total Patients</h3>
-            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>1,247</p>
+            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>0</p>
           </div>
           
           <div style={{
@@ -178,7 +200,7 @@ const Dashboard = () => {
               <FaCalendarAlt size={24} />
             </div>
             <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', color: 'white' }}>Total Appointments</h3>
-            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>156</p>
+            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>0</p>
           </div>
           
           <div style={{
@@ -206,7 +228,7 @@ const Dashboard = () => {
               <FaExclamationTriangle size={24} />
             </div>
             <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', color: 'white' }}>Missed Appointments</h3>
-            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>23</p>
+            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>0</p>
           </div>
           
           <div style={{
@@ -234,7 +256,7 @@ const Dashboard = () => {
               <FaSyringe size={24} />
             </div>
             <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', color: 'white' }}>Completed Vaccination</h3>
-            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>892</p>
+            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>0</p>
           </div>
           
           <div style={{
@@ -262,7 +284,7 @@ const Dashboard = () => {
               <FaUserMd size={24} />
             </div>
             <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', color: 'white' }}>Total Staff</h3>
-            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>45</p>
+            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>0</p>
           </div>
         </div>
       </div>

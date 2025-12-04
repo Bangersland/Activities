@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getAllAppointments, getVaccines, createTreatmentRecord, updateAppointmentStatus, getCurrentUser, getTreatmentRecordByAppointmentId, getTreatmentRecords } from '../supabase';
 import { FaEye, FaTimes } from 'react-icons/fa';
-import BarangayCaseCount from '../components/BarangayCaseCount';
 
 const StaffAppointmentList = () => {
   const [activeTab, setActiveTab] = useState('upcoming');
@@ -552,7 +551,7 @@ const StaffAppointmentList = () => {
                     fontWeight: '700',
                     color: '#1f2937'
                   }}>
-                    Treatment Details - {selectedAppointment.patient_name}
+                    Treatment Details
                   </h3>
                   {selectedAppointment.status === 'completed' && (
                     <div style={{
@@ -675,14 +674,7 @@ const StaffAppointmentList = () => {
                           <DetailItem label="Site of Bite" value={treatmentRecord.site_of_bite} />
                           <DetailItem label="Biting Animal" value={treatmentRecord.biting_animal} />
                           <DetailItem label="Animal Status" value={treatmentRecord.animal_status} />
-                          <div>
-                            <DetailItem label="Place Bitten (Barangay)" value={treatmentRecord.place_bitten_barangay} />
-                            {treatmentRecord.place_bitten_barangay && (
-                              <div style={{ marginTop: '8px' }}>
-                                <BarangayCaseCount barangayName={treatmentRecord.place_bitten_barangay} />
-                              </div>
-                            )}
-                          </div>
+                          <DetailItem label="Place Bitten (Barangay)" value={treatmentRecord.place_bitten_barangay} />
                           <DetailItem label="Provoked" value={treatmentRecord.provoked} />
                           <DetailItem label="Local Wound Treatment" value={treatmentRecord.local_wound_treatment} />
                         </div>
@@ -776,76 +768,6 @@ const StaffAppointmentList = () => {
                           {treatmentRecord.remarks || 'No remarks provided'}
                         </p>
                       </div>
-
-                      {/* Record Metadata */}
-                      <div style={{ marginBottom: '24px' }}>
-                        <h4 style={{
-                          margin: '0 0 16px 0',
-                          fontSize: '16px',
-                          fontWeight: '600',
-                          color: '#374151',
-                          borderBottom: '2px solid #3b82f6',
-                          paddingBottom: '8px'
-                        }}>
-                          Record Metadata
-                        </h4>
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(2, 1fr)',
-                          gap: '16px'
-                        }}>
-                          <DetailItem label="Created At" value={treatmentRecord.created_at ? new Date(treatmentRecord.created_at).toLocaleString() : 'Not specified'} />
-                          <DetailItem label="Updated At" value={treatmentRecord.updated_at ? new Date(treatmentRecord.updated_at).toLocaleString() : 'Not specified'} />
-                          <DetailItem label="Created By" value={treatmentRecord.created_by || 'Not specified'} />
-                          <DetailItem label="User ID" value={treatmentRecord.user_id || 'Not specified'} />
-                        </div>
-                      </div>
-
-                      {/* Debug Section - Show raw data */}
-                      <div style={{ 
-                        marginTop: '32px',
-                        padding: '16px',
-                        backgroundColor: '#fef3c7',
-                        borderRadius: '8px',
-                        border: '2px solid #f59e0b'
-                      }}>
-                        <h4 style={{
-                          margin: '0 0 12px 0',
-                          fontSize: '14px',
-                          fontWeight: '600',
-                          color: '#92400e',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px'
-                        }}>
-                          <span>🔍</span>
-                          <span>Debug: All Treatment Record Data (Raw JSON)</span>
-                        </h4>
-                        <div style={{
-                          marginBottom: '12px',
-                          fontSize: '12px',
-                          color: '#78350f',
-                          fontStyle: 'italic'
-                        }}>
-                          Check browser console (F12) for detailed logs.
-                        </div>
-                        <pre style={{
-                          margin: 0,
-                          fontSize: '11px',
-                          color: '#78350f',
-                          overflow: 'auto',
-                          maxHeight: '400px',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word',
-                          backgroundColor: '#fffbeb',
-                          padding: '12px',
-                          borderRadius: '4px',
-                          border: '1px solid #fde68a',
-                          fontFamily: 'monospace'
-                        }}>
-                          {JSON.stringify(treatmentRecord, null, 2)}
-                        </pre>
-                      </div>
                     </>
                   ) : (
                     <div style={{
@@ -919,14 +841,7 @@ const StaffAppointmentList = () => {
                       <DetailItem label="Site of Bite" value={selectedAppointment.site_of_bite} />
                       <DetailItem label="Biting Animal" value={selectedAppointment.biting_animal} />
                       <DetailItem label="Animal Status" value={selectedAppointment.animal_status} />
-                      <div>
-                        <DetailItem label="Place Bitten (Barangay)" value={selectedAppointment.place_bitten} />
-                        {selectedAppointment.place_bitten && (
-                          <div style={{ marginTop: '8px' }}>
-                            <BarangayCaseCount barangayName={selectedAppointment.place_bitten} />
-                          </div>
-                        )}
-                      </div>
+                      <DetailItem label="Place Bitten (Barangay)" value={selectedAppointment.place_bitten} />
                       <DetailItem label="Provoked" value={selectedAppointment.provoke} />
                       <DetailItem label="Local Wound Treatment" value={selectedAppointment.washing_of_bite || selectedAppointment.local_wound_treatment} />
                     </div>

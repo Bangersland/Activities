@@ -237,15 +237,33 @@ const Staff = () => {
     );
 
     if (error) {
-      setMessage(`❌ Error creating staff account: ${error.message}`);
+      console.error('Full error details:', error);
+      let errorMessage = `❌ Error creating staff account: ${error.message}`;
+      
+      // Provide more specific error messages
+      if (error.message?.includes('profile')) {
+        errorMessage += '\n\nPossible causes:\n- Username or email already exists\n- Database permission issue\n- Check browser console for details';
+      } else if (error.message?.includes('staff_details')) {
+        errorMessage += '\n\nPossible causes:\n- Missing required fields\n- Database permission issue\n- Check browser console for details';
+      } else if (error.message?.includes('email') || error.message?.includes('Email')) {
+        errorMessage += '\n\nThis email address may already be in use.';
+      } else if (error.message?.includes('username') || error.message?.includes('Username')) {
+        errorMessage += '\n\nThis username may already be in use.';
+      }
+      
+      setMessage(errorMessage);
     } else {
       setMessage('✅ Staff account created successfully!');
       resetForm();
-      await fetchStaffData();
-      setTimeout(() => {
-        setIsModalOpen(false);
-        setMessage('');
-      }, 2000);
+      
+      // Close modal first
+      setIsModalOpen(false);
+      setMessage('');
+      
+      // Wait a moment for database to commit, then refresh data
+      setTimeout(async () => {
+        await fetchStaffData();
+      }, 500);
     }
   };
 
@@ -316,11 +334,15 @@ const Staff = () => {
 
       setMessage('✅ Staff account updated successfully!');
       resetForm();
-      await fetchStaffData();
-      setTimeout(() => {
-        setIsUpdateModalOpen(false);
-        setMessage('');
-      }, 2000);
+      
+      // Close modal first
+      setIsUpdateModalOpen(false);
+      setMessage('');
+      
+      // Wait a moment for database to commit, then refresh data
+      setTimeout(async () => {
+        await fetchStaffData();
+      }, 500);
     } catch (error) {
       setMessage(`❌ Error updating staff account: ${error.message}`);
     }

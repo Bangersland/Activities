@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getAllAppointments } from '../supabase';
 
 const AnalyticsReports = () => {
-  const [selectedFilter, setSelectedFilter] = useState('month');
+  const [selectedFilter, setSelectedFilter] = useState('year');
   const [selectedPeriod, setSelectedPeriod] = useState(new Date().getFullYear().toString());
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -313,7 +313,13 @@ const AnalyticsReports = () => {
 
   if (loading) {
     return (
-      <div className="content-section">
+      <div className="content-section" style={{
+        height: '100%',
+        maxHeight: '100vh',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        boxSizing: 'border-box'
+      }}>
         <div style={{ padding: '40px', textAlign: 'center' }}>
           <p>Loading analytics data...</p>
         </div>
@@ -323,20 +329,32 @@ const AnalyticsReports = () => {
 
   if (error) {
     return (
-      <div className="content-section">
+      <div className="content-section" style={{
+        height: '100%',
+        maxHeight: '100vh',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        boxSizing: 'border-box'
+      }}>
         <div style={{ padding: '40px', textAlign: 'center', color: '#ef4444' }}>
           <p>Error loading data: {error}</p>
-          <button onClick={fetchAppointments} style={{ marginTop: '20px', padding: '10px 20px' }}>
-            Retry
-          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="content-section">
-      <div className="analytics-header">
+    <div className="content-section" style={{
+      height: '100%',
+      maxHeight: '100vh',
+      overflowY: 'auto',
+      overflowX: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+      position: 'relative',
+      boxSizing: 'border-box'
+    }}>
+      <div className="analytics-header" style={{ flexShrink: 0, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 10, paddingBottom: '10px', marginBottom: '20px' }}>
         <div className="header-content">
           <h2>Analytics Reports</h2>
           <p>Comprehensive bite case analysis and trends</p>

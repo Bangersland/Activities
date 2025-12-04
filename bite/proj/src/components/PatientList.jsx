@@ -1,20 +1,115 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
+import { getTreatmentRecords, getAllAppointments, supabase } from '../supabase';
 
 const PatientList = () => {
   const printRef = useRef(null);
+  const [patients, setPatients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [appointmentStatuses, setAppointmentStatuses] = useState({});
+  const [staffNames, setStaffNames] = useState({});
   
-  // Sample patient data - replace with actual data from database
-  const [patients] = useState([
-    { id: 'P001', name: 'Juan Dela Cruz', age: 35, gender: 'Male', barangay: 'Barangay 1', contact: '09123456789', lastVisit: '2024-01-15', status: 'Active' },
-    { id: 'P002', name: 'Maria Santos', age: 28, gender: 'Female', barangay: 'Barangay 2', contact: '09234567890', lastVisit: '2024-01-10', status: 'Active' },
-    { id: 'P003', name: 'Pedro Reyes', age: 45, gender: 'Male', barangay: 'Barangay 3', contact: '09345678901', lastVisit: '2024-01-08', status: 'Inactive' },
-    { id: 'P004', name: 'Ana Garcia', age: 32, gender: 'Female', barangay: 'Barangay 1', contact: '09456789012', lastVisit: '2024-01-12', status: 'Active' },
-    { id: 'P005', name: 'Luis Martinez', age: 50, gender: 'Male', barangay: 'Barangay 4', contact: '09567890123', lastVisit: '2024-01-05', status: 'Active' },
-    { id: 'P006', name: 'Carmen Lopez', age: 38, gender: 'Female', barangay: 'Barangay 2', contact: '09678901234', lastVisit: '2024-01-14', status: 'Active' },
-    { id: 'P007', name: 'Roberto Torres', age: 42, gender: 'Male', barangay: 'Barangay 5', contact: '09789012345', lastVisit: '2024-01-03', status: 'Inactive' },
-    { id: 'P008', name: 'Isabel Flores', age: 29, gender: 'Female', barangay: 'Barangay 3', contact: '09890123456', lastVisit: '2024-01-11', status: 'Active' },
-  ]);
+  // Fetch treatment records on component mount
+  useEffect(() => {
+    fetchPatients();
+    fetchAppointmentStatuses();
+  }, []);
+
+  const fetchPatients = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await getTreatmentRecords();
+      
+      if (error) {
+        console.error('Error fetching treatment records:', error);
+        setPatients([]);
+      } else {
+        // Map treatment records to patient list format
+        const mappedPatients = (data || []).map((record, index) => ({
+          id: record.id || `P${String(index + 1).padStart(3, '0')}`,
+          name: record.patient_name || 'N/A',
+          age: record.patient_age || 'N/A',
+          gender: record.patient_sex || 'N/A',
+          barangay: record.place_bitten_barangay || 'N/A',
+          contact: record.patient_contact || 'N/A',
+          lastVisit: record.appointment_date || record.created_at?.split('T')[0] || 'N/A',
+          status: 'Active',
+          treatmentRecord: record // Store full record for modal
+        }));
+        setPatients(mappedPatients);
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      setPatients([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAppointmentStatuses = async () => {
+    try {
+      const { data, error } = await getAllAppointments();
+      if (!error && data) {
+        const statusMap = {};
+        data.forEach(apt => {
+          statusMap[apt.id] = apt.status;
+        });
+        setAppointmentStatuses(statusMap);
+      }
+    } catch (err) {
+      console.error('Error fetching appointment statuses:', err);
+    }
+  };
+
+  const getStaffName = async (userId) => {
+    if (!userId) return 'N/A';
+    if (staffNames[userId]) return staffNames[userId];
+    
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('first_name, last_name, username')
+        .eq('id', userId)
+        .single();
+      
+      if (!error && data) {
+        const name = data.first_name && data.last_name
+          ? `${data.first_name} ${data.last_name}`
+          : data.username || 'Unknown';
+        setStaffNames(prev => ({ ...prev, [userId]: name }));
+        return name;
+      }
+    } catch (err) {
+      console.error('Error fetching staff name:', err);
+    }
+    return 'N/A';
+  };
+
+  const handleView = async (patient) => {
+    setSelectedPatient(patient);
+    setShowModal(true);
+    
+    // Fetch staff names for all dose updated_by fields
+    if (patient.treatmentRecord) {
+      const record = patient.treatmentRecord;
+      const userIds = [
+        record.d0_updated_by,
+        record.d3_updated_by,
+        record.d7_updated_by,
+        record.d14_updated_by,
+        record.d28_30_updated_by
+      ].filter(Boolean);
+      
+      // Fetch all staff names
+      const namePromises = userIds
+        .filter(userId => !staffNames[userId])
+        .map(userId => getStaffName(userId));
+      
+      await Promise.all(namePromises);
+    }
+  };
 
   // Export to Excel
   const exportToExcel = () => {
@@ -27,7 +122,9 @@ const PatientList = () => {
       'Barangay': patient.barangay,
       'Contact': patient.contact,
       'Last Visit': patient.lastVisit,
-      'Status': patient.status
+      'Status': patient.status,
+      'Appointment Date': patient.treatmentRecord?.appointment_date || 'N/A',
+      'Date Bitten': patient.treatmentRecord?.date_bitten || 'N/A'
     }));
 
     // Create workbook and worksheet
@@ -229,25 +326,44 @@ const PatientList = () => {
             </tr>
           </thead>
           <tbody>
-            {patients.map((patient) => (
-              <tr key={patient.id}>
-                <td>{patient.id}</td>
-                <td>{patient.name}</td>
-                <td>{patient.age}</td>
-                <td>{patient.gender}</td>
-                <td>{patient.barangay}</td>
-                <td>{patient.contact}</td>
-                <td>{patient.lastVisit}</td>
-                <td>
-                  <span className={patient.status === 'Active' ? 'status-active' : 'status-inactive'}>
-                    {patient.status}
-                  </span>
-                </td>
-                <td className="no-print">
-                  <button className="action-btn view-btn">View</button>
+            {loading ? (
+              <tr>
+                <td colSpan="9" style={{ textAlign: 'center', padding: '20px' }}>
+                  Loading patient data...
                 </td>
               </tr>
-            ))}
+            ) : patients.length === 0 ? (
+              <tr>
+                <td colSpan="9" style={{ textAlign: 'center', padding: '20px' }}>
+                  No patient records found
+                </td>
+              </tr>
+            ) : (
+              patients.map((patient) => (
+                <tr key={patient.id}>
+                  <td>{patient.id}</td>
+                  <td>{patient.name}</td>
+                  <td>{patient.age}</td>
+                  <td>{patient.gender}</td>
+                  <td>{patient.barangay}</td>
+                  <td>{patient.contact}</td>
+                  <td>{patient.lastVisit}</td>
+                  <td>
+                    <span className={patient.status === 'Active' ? 'status-active' : 'status-inactive'}>
+                      {patient.status}
+                    </span>
+                  </td>
+                  <td className="no-print">
+                    <button 
+                      className="action-btn view-btn"
+                      onClick={() => handleView(patient)}
+                    >
+                      View
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -258,6 +374,235 @@ const PatientList = () => {
         <span className="page-info">Page 1 of 5</span>
         <button className="pagination-btn">Next</button>
       </div>
+
+      {/* Patient Details Modal */}
+      {showModal && selectedPatient && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }} onClick={() => setShowModal(false)}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '30px',
+            maxWidth: '800px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '20px',
+              borderBottom: '2px solid #e5e7eb',
+              paddingBottom: '15px'
+            }}>
+              <h2 style={{ margin: 0, color: '#1f2937' }}>Patient Details</h2>
+              <button
+                onClick={() => setShowModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#6b7280'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {selectedPatient.treatmentRecord && (() => {
+              const record = selectedPatient.treatmentRecord;
+
+              const doses = [
+                { 
+                  number: 'D0', 
+                  date: record.d0_date, 
+                  status: record.d0_status || 'pending',
+                  updatedBy: record.d0_updated_by ? staffNames[record.d0_updated_by] || 'Loading...' : 'N/A',
+                  updatedAt: record.d0_updated_at
+                },
+                { 
+                  number: 'D3', 
+                  date: record.d3_date, 
+                  status: record.d3_status || 'pending',
+                  updatedBy: record.d3_updated_by ? staffNames[record.d3_updated_by] || 'Loading...' : 'N/A',
+                  updatedAt: record.d3_updated_at
+                },
+                { 
+                  number: 'D7', 
+                  date: record.d7_date, 
+                  status: record.d7_status || 'pending',
+                  updatedBy: record.d7_updated_by ? staffNames[record.d7_updated_by] || 'Loading...' : 'N/A',
+                  updatedAt: record.d7_updated_at
+                },
+                { 
+                  number: 'D14', 
+                  date: record.d14_date, 
+                  status: record.d14_status || 'pending',
+                  updatedBy: record.d14_updated_by ? staffNames[record.d14_updated_by] || 'Loading...' : 'N/A',
+                  updatedAt: record.d14_updated_at
+                },
+                { 
+                  number: 'D28/30', 
+                  date: record.d28_30_date, 
+                  status: record.d28_30_status || 'pending',
+                  updatedBy: record.d28_30_updated_by ? staffNames[record.d28_30_updated_by] || 'Loading...' : 'N/A',
+                  updatedAt: record.d28_30_updated_at
+                }
+              ];
+
+              return (
+                <div>
+                  {/* Patient Information */}
+                  <div style={{ marginBottom: '25px' }}>
+                    <h3 style={{ margin: '0 0 15px 0', color: '#374151', fontSize: '18px' }}>Patient Information</h3>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, 1fr)',
+                      gap: '15px'
+                    }}>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Name</label>
+                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.patient_name || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Age</label>
+                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.patient_age || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Gender</label>
+                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.patient_sex || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Contact</label>
+                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.patient_contact || 'N/A'}</p>
+                      </div>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Address</label>
+                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.patient_address || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Appointment Date</label>
+                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.appointment_date || 'N/A'}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Additional Information */}
+                  <div style={{ marginBottom: '25px' }}>
+                    <h3 style={{ margin: '0 0 15px 0', color: '#374151', fontSize: '18px' }}>Additional Information</h3>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, 1fr)',
+                      gap: '15px'
+                    }}>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Biting Animal</label>
+                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.biting_animal || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Date Bitten</label>
+                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.date_bitten || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Type of Exposure</label>
+                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.type_of_exposure || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Category of Exposure</label>
+                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>
+                          {record.category_of_exposure ? (() => {
+                            const categories = [];
+                            if (typeof record.category_of_exposure === 'object') {
+                              if (record.category_of_exposure.category_i) categories.push('Category I');
+                              if (record.category_of_exposure.category_ii) categories.push('Category II');
+                              if (record.category_of_exposure.category_iii) categories.push('Category III');
+                            }
+                            return categories.length > 0 ? categories.join(', ') : 'N/A';
+                          })() : 'N/A'}
+                        </p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Vaccine Brand</label>
+                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.vaccine_brand_name || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>RIG</label>
+                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.rig || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Route</label>
+                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.route || 'N/A'}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dose Information */}
+                  <div>
+                    <h3 style={{ margin: '0 0 15px 0', color: '#374151', fontSize: '18px' }}>Dose Information</h3>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{
+                        width: '100%',
+                        borderCollapse: 'collapse',
+                        fontSize: '14px'
+                      }}>
+                        <thead>
+                          <tr style={{ backgroundColor: '#f9fafb' }}>
+                            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #e5e7eb' }}>Dose</th>
+                            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #e5e7eb' }}>Date</th>
+                            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #e5e7eb' }}>Status</th>
+                            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #e5e7eb' }}>Updated By</th>
+                            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #e5e7eb' }}>Updated At</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {doses.map((dose, index) => (
+                            <tr key={index}>
+                              <td style={{ padding: '10px', border: '1px solid #e5e7eb' }}>{dose.number}</td>
+                              <td style={{ padding: '10px', border: '1px solid #e5e7eb' }}>{dose.date || 'N/A'}</td>
+                              <td style={{ padding: '10px', border: '1px solid #e5e7eb' }}>
+                                <span style={{
+                                  padding: '4px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  fontWeight: '600',
+                                  backgroundColor: dose.status === 'completed' ? '#d1fae5' : 
+                                                  dose.status === 'missed' ? '#fee2e2' : '#fef3c7',
+                                  color: dose.status === 'completed' ? '#065f46' : 
+                                         dose.status === 'missed' ? '#991b1b' : '#92400e'
+                                }}>
+                                  {dose.status.charAt(0).toUpperCase() + dose.status.slice(1)}
+                                </span>
+                              </td>
+                              <td style={{ padding: '10px', border: '1px solid #e5e7eb' }}>{dose.updatedBy}</td>
+                              <td style={{ padding: '10px', border: '1px solid #e5e7eb' }}>
+                                {dose.updatedAt ? new Date(dose.updatedAt).toLocaleString() : 'N/A'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

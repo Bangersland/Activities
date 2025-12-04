@@ -83,6 +83,7 @@ export const createStaffAccount = async (username, email, password, userData = {
 
         if (profileError) {
           console.error('Error creating profile:', profileError);
+          throw new Error(`Failed to create profile: ${profileError.message}`);
         } else {
           console.log('Profile record created successfully');
         }
@@ -106,6 +107,9 @@ export const createStaffAccount = async (username, email, password, userData = {
 
         if (staffError) {
           console.error('Error creating staff details:', staffError);
+          // Try to clean up profile if staff_details creation fails
+          await supabase.from('profiles').delete().eq('id', data.user.id).catch(() => {});
+          throw new Error(`Failed to create staff details: ${staffError.message}`);
         } else {
           console.log('Staff details record created successfully');
         }
@@ -124,6 +128,7 @@ export const createStaffAccount = async (username, email, password, userData = {
 
         if (updateError) {
           console.error('Error updating user metadata:', updateError);
+          // Non-critical error, continue
         } else {
           console.log('User metadata updated with verification status');
         }
@@ -147,7 +152,8 @@ export const createStaffAccount = async (username, email, password, userData = {
 
         console.log('Staff account creation and verification completed successfully');
       } catch (profileError) {
-        console.error('Error in profile creation:', profileError);
+        console.error('Error in profile/staff creation:', profileError);
+        throw profileError; // Re-throw to be caught by outer catch
       }
     }
 

@@ -153,7 +153,7 @@ const StaffDashboardOverview = () => {
                <FaUsers size={20} />
              </div>
              <h3 style={{ margin: '0 0 8px 0', fontSize: '14px', color: 'white' }}>Total Patients</h3>
-             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>1,247</p>
+             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>0</p>
            </div>
           
                      <div style={{
@@ -183,7 +183,7 @@ const StaffDashboardOverview = () => {
                <FaCalendarAlt size={20} />
              </div>
              <h3 style={{ margin: '0 0 8px 0', fontSize: '14px', color: 'white' }}>Total Appointments</h3>
-             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>156</p>
+             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>0</p>
            </div>
           
                      <div style={{
@@ -213,7 +213,7 @@ const StaffDashboardOverview = () => {
                <FaExclamationTriangle size={20} />
              </div>
              <h3 style={{ margin: '0 0 8px 0', fontSize: '14px', color: 'white' }}>Missed Appointments</h3>
-             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>23</p>
+             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>0</p>
            </div>
           
                      <div style={{
@@ -243,7 +243,7 @@ const StaffDashboardOverview = () => {
                <FaSyringe size={20} />
              </div>
              <h3 style={{ margin: '0 0 8px 0', fontSize: '14px', color: 'white' }}>Completed Vaccination</h3>
-             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>892</p>
+             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>0</p>
            </div>
         </div>
       </div>
