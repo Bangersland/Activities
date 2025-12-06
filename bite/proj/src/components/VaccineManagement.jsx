@@ -318,7 +318,7 @@ const VaccineManagement = () => {
           </div>
         ) : (
           <div className="table-wrapper">
-            <table className="data-table">
+            <table className="vaccine-table">
             <thead>
               <tr>
                   <th>Vaccine Brand</th>
@@ -643,30 +643,6 @@ const VaccineManagement = () => {
 
         .table-wrapper {
           overflow-x: auto;
-        }
-
-        .data-table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-
-        .data-table th {
-          background: #f9fafb;
-          padding: 16px 12px;
-          text-align: left;
-          font-weight: 600;
-          color: #374151;
-          border-bottom: 2px solid #e5e7eb;
-        }
-
-        .data-table td {
-          padding: 16px 12px;
-          border-bottom: 1px solid #f3f4f6;
-          vertical-align: middle;
-        }
-
-        .data-table tr:hover {
-          background: #f9fafb;
         }
 
         .expired-row {

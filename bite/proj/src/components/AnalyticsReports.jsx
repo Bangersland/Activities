@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { FaClock, FaPaw, FaUsers, FaChartLine } from 'react-icons/fa';
 import { getAllAppointments } from '../supabase';
 
 const AnalyticsReports = () => {
@@ -639,22 +640,30 @@ const AnalyticsReports = () => {
             return (
               <>
                 <div className="insight-card">
-                  <div className="insight-icon">⚠️</div>
+                  <div className="insight-icon">
+                    <FaClock size={32} />
+                  </div>
                   <h4>Peak Hours</h4>
                   <p>{peakHoursText}</p>
                 </div>
                 <div className="insight-card">
-                  <div className="insight-icon">🐕</div>
+                  <div className="insight-icon">
+                    <FaPaw size={32} />
+                  </div>
                   <h4>Animal Type Dominance</h4>
                   <p>{animalText}</p>
                 </div>
                 <div className="insight-card">
-                  <div className="insight-icon">👥</div>
+                  <div className="insight-icon">
+                    <FaUsers size={32} />
+                  </div>
                   <h4>Age Vulnerability</h4>
                   <p>{ageText}</p>
                 </div>
                 <div className="insight-card">
-                  <div className="insight-icon">📈</div>
+                  <div className="insight-icon">
+                    <FaChartLine size={32} />
+                  </div>
                   <h4>Seasonal Trend</h4>
                   <p>{seasonalText}</p>
                 </div>

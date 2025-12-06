@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaCalendarAlt, FaPlus, FaTimes, FaInfoCircle, FaEdit, FaTrash } from 'react-icons/fa';
+import { FaCalendarAlt, FaPlus, FaTimes, FaInfoCircle, FaEdit, FaTrash, FaClock } from 'react-icons/fa';
 import { 
   getAppointmentSlots, 
   createAppointmentSlots, 
@@ -331,7 +331,9 @@ const Schedule = () => {
             if (!selectedDate) {
               return (
                 <div className="empty-slots-state">
-                  <div className="empty-icon">📅</div>
+                  <div className="empty-icon">
+                    <FaCalendarAlt size={64} />
+                  </div>
                   <h4>No date selected</h4>
                   <p>Click on a date in the calendar to view or manage slots.</p>
                 </div>
@@ -376,7 +378,9 @@ const Schedule = () => {
             } else {
               return (
           <div className="empty-slots-state">
-            <div className="empty-icon">🕐</div>
+            <div className="empty-icon">
+              <FaClock size={64} />
+            </div>
             <h4>No slots configured</h4>
             <p>Create appointment slots for this date to allow scheduling.</p>
             <div style={{
