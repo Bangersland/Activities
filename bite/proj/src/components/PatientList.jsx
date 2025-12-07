@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FaFileAlt, FaPrint, FaDownload, FaTimes, FaCheckCircle, FaExclamationCircle, FaFilter, FaClock } from 'react-icons/fa';
+import { FaFileAlt, FaPrint, FaDownload, FaTimes, FaCheckCircle, FaExclamationCircle, FaFilter, FaClock, FaIdCard } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { getTreatmentRecords, getAllAppointments, supabase } from '../supabase';
 
@@ -330,16 +330,317 @@ const PatientList = () => {
     XLSX.writeFile(workbook, fileName);
   };
 
+  // Print Vaccine Card
+  const handlePrintVaccineCard = (patient) => {
+    if (!patient || !patient.treatmentRecord) return;
+    
+    const record = patient.treatmentRecord;
+    const doses = [
+      { name: 'D0', date: record.d0_date, status: record.d0_status || 'pending' },
+      { name: 'D3', date: record.d3_date, status: record.d3_status || 'pending' },
+      { name: 'D7', date: record.d7_date, status: record.d7_status || 'pending' },
+      { name: 'D14', date: record.d14_date, status: record.d14_status || 'pending' },
+      { name: 'D28/30', date: record.d28_30_date, status: record.d28_30_status || 'pending' }
+    ];
+
+    const printWindow = window.open('', '_blank');
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Vaccine Card - ${record.patient_name}</title>
+          <style>
+            @media print {
+              @page {
+                size: A4;
+                margin: 15mm;
+              }
+              body { margin: 0; padding: 0; }
+            }
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+            body {
+              font-family: 'Arial', sans-serif;
+              padding: 20px;
+              background: white;
+            }
+            .vaccine-card {
+              max-width: 800px;
+              margin: 0 auto;
+              border: 3px solid #1e40af;
+              border-radius: 12px;
+              padding: 30px;
+              background: linear-gradient(to bottom, #eff6ff 0%, #ffffff 20%);
+              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            .card-header {
+              text-align: center;
+              border-bottom: 3px solid #1e40af;
+              padding-bottom: 20px;
+              margin-bottom: 25px;
+            }
+            .card-header h1 {
+              color: #1e40af;
+              font-size: 28px;
+              font-weight: 700;
+              margin-bottom: 8px;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+            .card-header p {
+              color: #64748b;
+              font-size: 14px;
+              font-weight: 500;
+            }
+            .patient-info {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 20px;
+              margin-bottom: 25px;
+            }
+            .info-section {
+              background: #f8fafc;
+              padding: 15px;
+              border-radius: 8px;
+              border-left: 4px solid #3b82f6;
+            }
+            .info-section h3 {
+              color: #1e40af;
+              font-size: 12px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              margin-bottom: 8px;
+            }
+            .info-section p {
+              color: #1f2937;
+              font-size: 16px;
+              font-weight: 600;
+              word-break: break-word;
+            }
+            .vaccine-details {
+              background: #f0fdf4;
+              padding: 20px;
+              border-radius: 8px;
+              border: 2px solid #22c55e;
+              margin-bottom: 25px;
+            }
+            .vaccine-details h2 {
+              color: #166534;
+              font-size: 18px;
+              font-weight: 700;
+              margin-bottom: 15px;
+              text-align: center;
+              border-bottom: 2px solid #22c55e;
+              padding-bottom: 10px;
+            }
+            .vaccine-info {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 15px;
+              margin-bottom: 15px;
+            }
+            .dose-schedule {
+              margin-top: 20px;
+            }
+            .dose-schedule h3 {
+              color: #166534;
+              font-size: 14px;
+              font-weight: 700;
+              margin-bottom: 12px;
+              text-transform: uppercase;
+            }
+            .dose-table {
+              width: 100%;
+              border-collapse: collapse;
+              background: white;
+              border-radius: 6px;
+              overflow: hidden;
+            }
+            .dose-table thead {
+              background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+              color: white;
+            }
+            .dose-table th {
+              padding: 12px;
+              text-align: left;
+              font-weight: 700;
+              font-size: 12px;
+              text-transform: uppercase;
+            }
+            .dose-table td {
+              padding: 12px;
+              border-bottom: 1px solid #e5e7eb;
+              font-size: 14px;
+            }
+            .dose-table tr:last-child td {
+              border-bottom: none;
+            }
+            .status-badge {
+              display: inline-block;
+              padding: 4px 12px;
+              border-radius: 20px;
+              font-size: 12px;
+              font-weight: 600;
+              text-transform: uppercase;
+            }
+            .status-completed {
+              background: #d1fae5;
+              color: #065f46;
+            }
+            .status-pending {
+              background: #fef3c7;
+              color: #92400e;
+            }
+            .status-missed {
+              background: #fee2e2;
+              color: #991b1b;
+            }
+            .footer {
+              text-align: center;
+              margin-top: 30px;
+              padding-top: 20px;
+              border-top: 2px solid #e5e7eb;
+              color: #64748b;
+              font-size: 12px;
+            }
+            .qr-placeholder {
+              width: 100px;
+              height: 100px;
+              border: 2px dashed #cbd5e1;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              margin: 20px auto;
+              border-radius: 8px;
+              color: #94a3b8;
+              font-size: 10px;
+              text-align: center;
+            }
+            @media print {
+              .vaccine-card {
+                box-shadow: none;
+                border: 3px solid #1e40af;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="vaccine-card">
+            <div class="card-header">
+              <h1>🩺 Rabies Vaccination Card</h1>
+              <p>Official Vaccination Record</p>
+            </div>
+            
+            <div class="patient-info">
+              <div class="info-section">
+                <h3>Patient Name</h3>
+                <p>${record.patient_name || 'N/A'}</p>
+              </div>
+              <div class="info-section">
+                <h3>Patient ID</h3>
+                <p>${patient.id}</p>
+              </div>
+              <div class="info-section">
+                <h3>Contact Number</h3>
+                <p>${record.patient_contact || 'N/A'}</p>
+              </div>
+              <div class="info-section">
+                <h3>Date of Birth / Age</h3>
+                <p>${record.patient_age ? `${record.patient_age} years old` : 'N/A'}</p>
+              </div>
+              <div class="info-section">
+                <h3>Gender</h3>
+                <p>${record.patient_sex || 'N/A'}</p>
+              </div>
+              <div class="info-section">
+                <h3>Address</h3>
+                <p>${record.patient_address || 'N/A'}</p>
+              </div>
+            </div>
+
+            <div class="vaccine-details">
+              <h2>Vaccination Information</h2>
+              <div class="vaccine-info">
+                <div class="info-section" style="background: white; border-left-color: #22c55e;">
+                  <h3>Vaccine Brand</h3>
+                  <p>${record.vaccine_brand_name || 'N/A'}</p>
+                </div>
+                <div class="info-section" style="background: white; border-left-color: #22c55e;">
+                  <h3>Type of Exposure</h3>
+                  <p>${record.type_of_exposure || 'N/A'}</p>
+                </div>
+                <div class="info-section" style="background: white; border-left-color: #22c55e;">
+                  <h3>Category</h3>
+                  <p>${formatCategoryOfExposure(record.category_of_exposure)}</p>
+                </div>
+                <div class="info-section" style="background: white; border-left-color: #22c55e;">
+                  <h3>Treatment</h3>
+                  <p>${formatTreatmentToBeGiven(record.treatment_to_be_given)}</p>
+                </div>
+                <div class="info-section" style="background: white; border-left-color: #22c55e;">
+                  <h3>Route</h3>
+                  <p>${record.route || 'N/A'}</p>
+                </div>
+                <div class="info-section" style="background: white; border-left-color: #22c55e;">
+                  <h3>RIG</h3>
+                  <p>${record.rig || 'N/A'}</p>
+                </div>
+              </div>
+
+              <div class="dose-schedule">
+                <h3>Vaccination Schedule</h3>
+                <table class="dose-table">
+                  <thead>
+                    <tr>
+                      <th>Dose</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${doses.map(dose => `
+                      <tr>
+                        <td><strong>${dose.name}</strong></td>
+                        <td>${dose.date ? new Date(dose.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="footer">
+              <p><strong>Issued Date:</strong> ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+              <p style="margin-top: 10px;">This is an official vaccination record. Please keep this card safe.</p>
+              <div class="qr-placeholder">
+                <div>QR Code<br/>Placeholder</div>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+    
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
+
   // Print filtered patients
   const handlePrint = () => {
     const printContent = printRef.current;
     if (!printContent) return;
-
+    
     const printWindow = window.open('', '_blank');
     const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
       .map(style => style.outerHTML)
       .join('');
-
+    
     printWindow.document.write(`
       <html>
         <head>
@@ -374,7 +675,7 @@ const PatientList = () => {
         </body>
       </html>
     `);
-
+    
     printWindow.document.close();
     setTimeout(() => {
       printWindow.print();
