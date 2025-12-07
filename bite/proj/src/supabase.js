@@ -1582,4 +1582,338 @@ export const getAllDoseStatistics = async () => {
     console.error('Error in getAllDoseStatistics:', error);
     return { data: null, error };
   }
+};
+
+// ============================================
+// GROUP CHAT AND PRESCRIPTION FUNCTIONS
+// ============================================
+
+// Create a new group
+export const createGroup = async (name, description = '', memberIds = []) => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return { data: null, error: { message: 'User not authenticated' } };
+    }
+
+    // Create the group
+    const { data: group, error: groupError } = await supabase
+      .from('groups')
+      .insert({
+        name,
+        description,
+        created_by: user.id
+      })
+      .select()
+      .single();
+
+    if (groupError) {
+      return { data: null, error: groupError };
+    }
+
+    // Add creator as admin member
+    await supabase
+      .from('group_members')
+      .insert({
+        group_id: group.id,
+        user_id: user.id,
+        role: 'admin'
+      });
+
+    // Add other members if provided
+    if (memberIds.length > 0) {
+      const members = memberIds.map(memberId => ({
+        group_id: group.id,
+        user_id: memberId,
+        role: 'member'
+      }));
+
+      await supabase
+        .from('group_members')
+        .insert(members);
+    }
+
+    return { data: group, error: null };
+  } catch (error) {
+    console.error('Error creating group:', error);
+    return { data: null, error };
+  }
+};
+
+// Add patient to group by contact (for patients without user accounts)
+export const addPatientToGroup = async (groupId, patientContact, patientName) => {
+  try {
+    const { data, error } = await supabase
+      .from('group_members')
+      .insert({
+        group_id: groupId,
+        patient_contact: patientContact,
+        patient_name: patientName,
+        role: 'member'
+      })
+      .select()
+      .single();
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    return { data, error: null };
+  } catch (error) {
+    console.error('Error adding patient to group:', error);
+    return { data: null, error };
+  }
+};
+
+// Get all groups for current user
+export const getUserGroups = async () => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return { data: [], error: null };
+    }
+
+    // Get groups where user is a member
+    const { data, error } = await supabase
+      .from('group_members')
+      .select(`
+        group_id,
+        groups (
+          id,
+          name,
+          description,
+          created_by,
+          created_at,
+          updated_at
+        )
+      `)
+      .eq('user_id', user.id);
+
+    if (error) {
+      return { data: [], error };
+    }
+
+    // Also get groups where patient contact matches
+    const { data: appointmentData } = await getAllAppointments();
+    const patientContacts = (appointmentData || [])
+      .filter(apt => apt.patient_contact)
+      .map(apt => apt.patient_contact);
+
+    if (patientContacts.length > 0) {
+      const { data: patientGroups, error: patientError } = await supabase
+        .from('group_members')
+        .select(`
+          group_id,
+          groups (
+            id,
+            name,
+            description,
+            created_by,
+            created_at,
+            updated_at
+          )
+        `)
+        .in('patient_contact', patientContacts);
+
+      if (!patientError && patientGroups) {
+        // Merge and deduplicate
+        const allGroups = [...(data || []), ...patientGroups];
+        const uniqueGroups = Array.from(
+          new Map(allGroups.map(item => [item.group_id, item.groups])).values()
+        );
+        return { data: uniqueGroups, error: null };
+      }
+    }
+
+    const groups = (data || []).map(item => item.groups).filter(Boolean);
+    return { data: groups, error: null };
+  } catch (error) {
+    console.error('Error getting user groups:', error);
+    return { data: [], error };
+  }
+};
+
+// Get group members
+export const getGroupMembers = async (groupId) => {
+  try {
+    const { data, error } = await supabase
+      .from('group_members')
+      .select(`
+        id,
+        user_id,
+        patient_contact,
+        patient_name,
+        role,
+        joined_at,
+        profiles:user_id (
+          id,
+          username,
+          email,
+          first_name,
+          last_name
+        )
+      `)
+      .eq('group_id', groupId)
+      .order('joined_at', { ascending: true });
+
+    if (error) {
+      return { data: [], error };
+    }
+
+    return { data: data || [], error: null };
+  } catch (error) {
+    console.error('Error getting group members:', error);
+    return { data: [], error };
+  }
+};
+
+// Get messages for a group
+export const getGroupMessages = async (groupId, limit = 50) => {
+  try {
+    const { data, error } = await supabase
+      .from('messages')
+      .select(`
+        id,
+        group_id,
+        sender_id,
+        sender_name,
+        sender_contact,
+        message_text,
+        message_type,
+        prescription_data,
+        file_url,
+        created_at,
+        profiles:sender_id (
+          id,
+          username,
+          email,
+          first_name,
+          last_name
+        )
+      `)
+      .eq('group_id', groupId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      return { data: [], error };
+    }
+
+    return { data: (data || []).reverse(), error: null }; // Reverse to show oldest first
+  } catch (error) {
+    console.error('Error getting group messages:', error);
+    return { data: [], error };
+  }
+};
+
+// Send a message to a group
+export const sendGroupMessage = async (groupId, messageText, messageType = 'text', prescriptionData = null, fileUrl = null) => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    // Get sender name from profile
+    let senderName = 'Unknown';
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('first_name, last_name, username')
+        .eq('id', user.id)
+        .single();
+      
+      if (profile) {
+        senderName = profile.first_name && profile.last_name
+          ? `${profile.first_name} ${profile.last_name}`
+          : profile.username || user.email;
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({
+        group_id: groupId,
+        sender_id: user?.id || null,
+        sender_name: senderName,
+        message_text: messageText,
+        message_type: messageType,
+        prescription_data: prescriptionData,
+        file_url: fileUrl
+      })
+      .select()
+      .single();
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    // If it's a prescription message, also create a prescription record
+    if (messageType === 'prescription' && prescriptionData) {
+      await supabase
+        .from('prescriptions')
+        .insert({
+          group_id: groupId,
+          message_id: data.id,
+          patient_contact: prescriptionData.patient_contact,
+          patient_name: prescriptionData.patient_name,
+          prescription_text: prescriptionData.prescription_text || messageText,
+          medication_details: prescriptionData.medication_details,
+          created_by: user?.id || null
+        });
+    }
+
+    return { data, error: null };
+  } catch (error) {
+    console.error('Error sending message:', error);
+    return { data: null, error };
+  }
+};
+
+// Get prescriptions for a group
+export const getGroupPrescriptions = async (groupId) => {
+  try {
+    const { data, error } = await supabase
+      .from('prescriptions')
+      .select('*')
+      .eq('group_id', groupId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      return { data: [], error };
+    }
+
+    return { data: data || [], error: null };
+  } catch (error) {
+    console.error('Error getting prescriptions:', error);
+    return { data: [], error };
+  }
+};
+
+// Delete a group
+export const deleteGroup = async (groupId) => {
+  try {
+    const { error } = await supabase
+      .from('groups')
+      .delete()
+      .eq('id', groupId);
+
+    return { error };
+  } catch (error) {
+    console.error('Error deleting group:', error);
+    return { error };
+  }
+};
+
+// Remove member from group
+export const removeGroupMember = async (groupId, memberId) => {
+  try {
+    const { error } = await supabase
+      .from('group_members')
+      .delete()
+      .eq('group_id', groupId)
+      .or(`user_id.eq.${memberId},patient_contact.eq.${memberId}`);
+
+    return { error };
+  } catch (error) {
+    console.error('Error removing group member:', error);
+    return { error };
+  }
 }; 

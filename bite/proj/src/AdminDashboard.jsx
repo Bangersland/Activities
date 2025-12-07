@@ -10,7 +10,7 @@ import VaccineManagement from './components/VaccineManagement.jsx';
 import AnalyticsReports from './components/AnalyticsReports.jsx';
 import Map from './components/Map.jsx';
 import ProfessionalHeader from './components/ProfessionalHeader.jsx';
-import { FaTachometerAlt, FaCalendarCheck, FaUsers, FaUserMd, FaCalendarAlt, FaSyringe, FaChartBar, FaMapMarkedAlt } from 'react-icons/fa';
+import { FaTachometerAlt, FaCalendarCheck, FaUsers, FaUserMd, FaCalendarAlt, FaSyringe, FaChartBar, FaMapMarkedAlt, FaBell, FaTimes } from 'react-icons/fa';
 import { supabase } from './supabase';
 import logoImage from './assets/logo1.png';
 
@@ -18,6 +18,7 @@ const AdminDashboard = ({ onLogout }) => {
   const [activeSection, setActiveSection] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
+  const [notification, setNotification] = useState(null);
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <FaTachometerAlt />, routeName: 'admin-dashboard' },
@@ -46,6 +47,52 @@ const AdminDashboard = ({ onLogout }) => {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Set up real-time subscription for new appointments
+  useEffect(() => {
+    // Subscribe to new appointments
+    const channel = supabase
+      .channel('appointments-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'appointments',
+          filter: 'status=eq.pending'
+        },
+        (payload) => {
+          // Show notification when a new pending appointment is created
+          const newAppointment = payload.new;
+          setNotification({
+            id: newAppointment.id,
+            message: `New appointment booked by ${newAppointment.patient_name || 'a patient'}`,
+            appointmentDate: newAppointment.appointment_date,
+            timestamp: new Date()
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const handleNotificationClick = () => {
+    // Navigate to appointment list (which defaults to pending tab)
+    setActiveSection('appointment-list');
+    window.history.pushState({ route: 'admin-appointment-list', section: 'appointment-list' }, '', '/admin-appointment-list');
+    setNotification(null);
+    // Force a small delay to ensure the component re-renders
+    setTimeout(() => {
+      window.dispatchEvent(new Event('appointment-list-refresh'));
+    }, 100);
+  };
+
+  const handleCloseNotification = () => {
+    setNotification(null);
+  };
 
   // Sync URL with active section on mount and when section changes
   useEffect(() => {
@@ -190,6 +237,35 @@ const AdminDashboard = ({ onLogout }) => {
           {renderContent()}
         </main>
       </div>
+
+      {/* Appointment Notification */}
+      {notification && (
+        <div className="appointment-notification" onClick={handleNotificationClick}>
+          <div className="notification-content">
+            <div className="notification-icon">
+              <FaBell />
+            </div>
+            <div className="notification-text">
+              <div className="notification-title">New Appointment</div>
+              <div className="notification-message">{notification.message}</div>
+              {notification.appointmentDate && (
+                <div className="notification-date">
+                  Date: {new Date(notification.appointmentDate).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+            <button 
+              className="notification-close" 
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCloseNotification();
+              }}
+            >
+              <FaTimes />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getAllAppointments, getVaccines, createTreatmentRecord, updateAppointmentStatus, getCurrentUser, getTreatmentRecordByAppointmentId, getTreatmentRecords, autoCreateTreatmentRecordsForAppointmentsWithoutContact } from '../supabase';
-import { FaEye, FaTimes, FaSync } from 'react-icons/fa';
+import { FaEye, FaTimes, FaSync, FaUsers } from 'react-icons/fa';
+import GroupManagement from '../components/GroupManagement';
 
 const StaffAppointmentList = () => {
   const [activeTab, setActiveTab] = useState('upcoming');
@@ -34,6 +35,7 @@ const StaffAppointmentList = () => {
     remarks: ''
   });
   const [autoCreating, setAutoCreating] = useState(false);
+  const [showGroupManagement, setShowGroupManagement] = useState(false);
 
   // Fetch appointments and vaccines on component mount
   useEffect(() => {
@@ -374,7 +376,9 @@ const StaffAppointmentList = () => {
           marginBottom: '24px',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '12px'
         }}>
           <h2 style={{
             margin: '0 0 8px 0',
@@ -384,28 +388,64 @@ const StaffAppointmentList = () => {
           }}>
             All Appointments
           </h2>
-          <button
-            onClick={handleAutoCreateTreatmentRecords}
-            disabled={autoCreating}
-            style={{
-              padding: '10px 16px',
-              backgroundColor: autoCreating ? '#9ca3af' : '#3b82f6',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: autoCreating ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              transition: 'all 0.2s ease'
-            }}
-            title="Automatically create treatment records for completed appointments without contact info"
-          >
-            <FaSync style={{ animation: autoCreating ? 'spin 1s linear infinite' : 'none' }} />
-            {autoCreating ? 'Creating...' : 'Auto-Create Records'}
-          </button>
+          <div style={{
+            display: 'flex',
+            gap: '12px',
+            alignItems: 'center'
+          }}>
+            <button
+              onClick={() => setShowGroupManagement(true)}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 2px 4px rgba(16, 185, 129, 0.2)'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.transform = 'translateY(-1px)';
+                e.target.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = '0 2px 4px rgba(16, 185, 129, 0.2)';
+              }}
+              title="Manage groups and send prescriptions to patients"
+            >
+              <FaUsers />
+              Group Chat
+            </button>
+            <button
+              onClick={handleAutoCreateTreatmentRecords}
+              disabled={autoCreating}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: autoCreating ? '#9ca3af' : '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: autoCreating ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease'
+              }}
+              title="Automatically create treatment records for completed appointments without contact info"
+            >
+              <FaSync style={{ animation: autoCreating ? 'spin 1s linear infinite' : 'none' }} />
+              {autoCreating ? 'Creating...' : 'Auto-Create Records'}
+            </button>
+          </div>
         </div>
 
         {/* Navigation Tabs */}
@@ -1392,6 +1432,13 @@ const StaffAppointmentList = () => {
               )}
             </div>
           </div>
+        )}
+
+        {/* Group Management Modal */}
+        {showGroupManagement && (
+          <GroupManagement
+            onClose={() => setShowGroupManagement(false)}
+          />
         )}
       </div>
     </div>
