@@ -19,7 +19,220 @@ const StaffPatientListTracker = () => {
     2: "Awaiting 2nd Dose",
     3: "Awaiting 3rd Dose",
     4: "Awaiting 4th Dose",
-    5: "Booster"
+    5: "Awaiting 5th Dose",
+    6: "Booster"
+  };
+
+  // Helper function to get dose field names
+  const getDoseFieldNames = (doseNumber) => {
+    const doseMap = {
+      1: { date: 'd0_date', status: 'd0_status', updatedBy: 'd0_updated_by', updatedAt: 'd0_updated_at' },
+      2: { date: 'd3_date', status: 'd3_status', updatedBy: 'd3_updated_by', updatedAt: 'd3_updated_at' },
+      3: { date: 'd7_date', status: 'd7_status', updatedBy: 'd7_updated_by', updatedAt: 'd7_updated_at' },
+      4: { date: 'd14_date', status: 'd14_status', updatedBy: 'd14_updated_by', updatedAt: 'd14_updated_at' },
+      5: { date: 'd28_30_date', status: 'd28_30_status', updatedBy: 'd28_30_updated_by', updatedAt: 'd28_30_updated_at' },
+      6: { date: 'd28_30_date', status: 'd28_30_status', updatedBy: 'd28_30_updated_by', updatedAt: 'd28_30_updated_at' } // Booster uses same field as 5th dose
+    };
+    return doseMap[doseNumber] || null;
+  };
+
+  // Filter patients based on dose progression rules
+  const filterPatientsByDoseRules = (patients, doseNumber) => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // Today at midnight
+    const twelveHoursInMs = 12 * 60 * 60 * 1000; // 12 hours in milliseconds
+
+    // Helper function to check if a date string is today or in the future
+    const isTodayOrFuture = (dateString) => {
+      if (!dateString) return false;
+      try {
+        const date = new Date(dateString);
+        // Handle both date strings and date objects
+        const dateOnly = date instanceof Date && !isNaN(date) 
+          ? new Date(date.getFullYear(), date.getMonth(), date.getDate())
+          : null;
+        if (!dateOnly) return false;
+        // Include today (>= today) and future dates
+        return dateOnly >= today;
+      } catch (e) {
+        return false;
+      }
+    };
+
+    // Helper function to check if a dose was completed within the last 12 hours
+    const isCompletedWithin12Hours = (status, updatedAt, date) => {
+      if (status !== 'completed') return false;
+      
+      if (updatedAt) {
+        const completedAt = new Date(updatedAt);
+        const timeSinceCompletion = now.getTime() - completedAt.getTime();
+        return timeSinceCompletion <= twelveHoursInMs; // Within 12 hours
+      }
+      
+      // If no updated_at, check the date
+      if (date) {
+        const doseDate = new Date(date);
+        const timeSinceDate = now.getTime() - doseDate.getTime();
+        return timeSinceDate <= twelveHoursInMs; // Within 12 hours
+      }
+      
+      return false;
+    };
+
+    return patients.filter(patient => {
+      // For dose 1 (D0): Show if D0 is not completed OR completed within last 12 hours
+      if (doseNumber === 1) {
+        if (patient.d0_status === 'completed') {
+          // Show if completed within last 12 hours
+          return isCompletedWithin12Hours(patient.d0_status, patient.d0_updated_at, patient.d0_date);
+        }
+        return true; // Not completed, show them
+      }
+
+      // For dose 2 (D3): Must have completed D0, and (D3 not completed OR completed within 12 hours), and (d3_date is today/future OR 12 hours passed since D0)
+      if (doseNumber === 2) {
+        if (patient.d0_status !== 'completed') return false;
+        
+        // If D3 is completed, only show if completed within last 12 hours
+        if (patient.d3_status === 'completed') {
+          return isCompletedWithin12Hours(patient.d3_status, patient.d3_updated_at, patient.d3_date);
+        }
+        
+        // D3 is not completed, check if they should appear based on schedule or timing
+        // If d3_date is scheduled for today or in the future, show them immediately
+        if (isTodayOrFuture(patient.d3_date)) {
+          return true; // Scheduled date is today or future, show them
+        }
+        
+        // If no scheduled date or date is past, check if at least 12 hours have passed since D0 completion
+        if (patient.d0_updated_at) {
+          const d0CompletedAt = new Date(patient.d0_updated_at);
+          const timeSinceCompletion = now.getTime() - d0CompletedAt.getTime();
+          return timeSinceCompletion >= twelveHoursInMs;
+        }
+        // If no updated_at, check the date
+        if (patient.d0_date) {
+          const d0Date = new Date(patient.d0_date);
+          const timeSinceDate = now.getTime() - d0Date.getTime();
+          return timeSinceDate >= twelveHoursInMs;
+        }
+        return false;
+      }
+
+      // For dose 3 (D7): Must have completed D3, and (D7 not completed OR completed within 12 hours), and (d7_date is today/future OR 12 hours passed since D3)
+      if (doseNumber === 3) {
+        if (patient.d3_status !== 'completed') return false;
+        
+        // If D7 is completed, only show if completed within last 12 hours
+        if (patient.d7_status === 'completed') {
+          return isCompletedWithin12Hours(patient.d7_status, patient.d7_updated_at, patient.d7_date);
+        }
+        
+        // D7 is not completed, check if they should appear based on schedule or timing
+        // If d7_date is scheduled for today or in the future, show them immediately
+        if (isTodayOrFuture(patient.d7_date)) {
+          return true; // Scheduled date is today or future, show them
+        }
+        
+        // If no scheduled date or date is past, check if at least 12 hours have passed since D3 completion
+        if (patient.d3_updated_at) {
+          const d3CompletedAt = new Date(patient.d3_updated_at);
+          const timeSinceCompletion = now.getTime() - d3CompletedAt.getTime();
+          return timeSinceCompletion >= twelveHoursInMs;
+        }
+        if (patient.d3_date) {
+          const d3Date = new Date(patient.d3_date);
+          const timeSinceDate = now.getTime() - d3Date.getTime();
+          return timeSinceDate >= twelveHoursInMs;
+        }
+        return false;
+      }
+
+      // For dose 4 (D14): Must have completed D7, and (D14 not completed OR completed within 12 hours), and (d14_date is today/future OR 12 hours passed since D7)
+      if (doseNumber === 4) {
+        if (patient.d7_status !== 'completed') return false;
+        
+        // If D14 is completed, only show if completed within last 12 hours
+        if (patient.d14_status === 'completed') {
+          return isCompletedWithin12Hours(patient.d14_status, patient.d14_updated_at, patient.d14_date);
+        }
+        
+        // D14 is not completed, check if they should appear based on schedule or timing
+        // If d14_date is scheduled for today or in the future, show them immediately
+        if (isTodayOrFuture(patient.d14_date)) {
+          return true; // Scheduled date is today or future, show them
+        }
+        
+        // If no scheduled date or date is past, check if at least 12 hours have passed since D7 completion
+        if (patient.d7_updated_at) {
+          const d7CompletedAt = new Date(patient.d7_updated_at);
+          const timeSinceCompletion = now.getTime() - d7CompletedAt.getTime();
+          return timeSinceCompletion >= twelveHoursInMs;
+        }
+        if (patient.d7_date) {
+          const d7Date = new Date(patient.d7_date);
+          const timeSinceDate = now.getTime() - d7Date.getTime();
+          return timeSinceDate >= twelveHoursInMs;
+        }
+        return false;
+      }
+
+      // For dose 5 (D28/30): Must have completed D14, and (D28/30 not completed OR completed within 12 hours), and (d28_30_date is today/future OR 12 hours passed since D14)
+      if (doseNumber === 5) {
+        if (patient.d14_status !== 'completed') return false;
+        
+        // If D28/30 is completed, only show if completed within last 12 hours
+        if (patient.d28_30_status === 'completed') {
+          return isCompletedWithin12Hours(patient.d28_30_status, patient.d28_30_updated_at, patient.d28_30_date);
+        }
+        
+        // D28/30 is not completed, check if they should appear based on schedule or timing
+        // If d28_30_date is scheduled for today or in the future, show them immediately
+        if (isTodayOrFuture(patient.d28_30_date)) {
+          return true; // Scheduled date is today or future, show them
+        }
+        
+        // If no scheduled date or date is past, check if at least 12 hours have passed since D14 completion
+        if (patient.d14_updated_at) {
+          const d14CompletedAt = new Date(patient.d14_updated_at);
+          const timeSinceCompletion = now.getTime() - d14CompletedAt.getTime();
+          return timeSinceCompletion >= twelveHoursInMs;
+        }
+        if (patient.d14_date) {
+          const d14Date = new Date(patient.d14_date);
+          const timeSinceDate = now.getTime() - d14Date.getTime();
+          return timeSinceDate >= twelveHoursInMs;
+        }
+        return false;
+      }
+
+      // For dose 6 (Booster): Must have completed D28/30, and (Booster not completed OR completed within 12 hours), and (d28_30_date is today/future OR 12 hours passed since D28/30)
+      if (doseNumber === 6) {
+        if (patient.d28_30_status !== 'completed') return false;
+        
+        // If Booster is completed, only show if completed within last 12 hours
+        // Note: Booster uses the same d28_30 fields, so we check if it was completed again (second completion)
+        // For now, we'll show booster patients if d28_30 is completed and date is today/future
+        if (isTodayOrFuture(patient.d28_30_date)) {
+          return true; // Scheduled date is today or future, show them
+        }
+        
+        // If d28_30 was completed, check if at least 12 hours have passed since completion
+        if (patient.d28_30_updated_at) {
+          const d28CompletedAt = new Date(patient.d28_30_updated_at);
+          const timeSinceCompletion = now.getTime() - d28CompletedAt.getTime();
+          return timeSinceCompletion >= twelveHoursInMs;
+        }
+        if (patient.d28_30_date) {
+          const d28Date = new Date(patient.d28_30_date);
+          const timeSinceDate = now.getTime() - d28Date.getTime();
+          return timeSinceDate >= twelveHoursInMs;
+        }
+        return false;
+      }
+
+      return false;
+    });
   };
 
   // Fetch dose statistics on component mount
@@ -45,12 +258,41 @@ const StaffPatientListTracker = () => {
   const fetchDoseStatistics = async () => {
     setLoading(true);
     try {
-      const { data, error } = await getAllDoseStatistics();
-      if (error) {
-        console.error('Error fetching dose statistics:', error);
-      } else {
-        setDoseStats(data || {});
+      // Fetch all patients for each dose and filter them based on rules
+      const stats = {};
+      
+      for (let doseNumber = 1; doseNumber <= 6; doseNumber++) {
+        const { data, error } = await getPatientsByDose(doseNumber, true);
+        if (!error && data) {
+          const filteredPatients = filterPatientsByDoseRules(data, doseNumber);
+          
+          // Count statuses from filtered patients
+          const fieldNames = getDoseFieldNames(doseNumber);
+          let pending = 0;
+          let completed = 0;
+          let missed = 0;
+          
+          filteredPatients.forEach(patient => {
+            if (fieldNames) {
+              const status = patient[fieldNames.status] || 'pending';
+              if (status === 'completed') completed++;
+              else if (status === 'missed') missed++;
+              else pending++;
+            }
+          });
+          
+          stats[doseNumber] = {
+            pending,
+            completed,
+            missed,
+            total: pending + completed + missed
+          };
+        } else {
+          stats[doseNumber] = { pending: 0, completed: 0, missed: 0, total: 0 };
+        }
       }
+      
+      setDoseStats(stats);
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -66,7 +308,9 @@ const StaffPatientListTracker = () => {
         console.error('Error fetching patients:', error);
         setPatients([]);
       } else {
-        setPatients(data || []);
+        // Filter patients based on previous dose completion and 12-hour rule
+        const filteredPatients = filterPatientsByDoseRules(data || [], doseNumber);
+        setPatients(filteredPatients);
       }
     } catch (error) {
       console.error('Error:', error);
@@ -215,7 +459,7 @@ const StaffPatientListTracker = () => {
               flexDirection: 'column',
               gap: '12px'
             }}>
-              {[1, 2, 3, 4, 5].map((doseNumber) => {
+              {[1, 2, 3, 4, 5, 6].map((doseNumber) => {
                 const stats = doseStats[doseNumber] || { pending: 0, completed: 0, missed: 0 };
                 const isSelected = selectedDose === doseNumber;
                 

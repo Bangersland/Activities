@@ -92,17 +92,26 @@ const PatientList = () => {
           const completionStatus = calculateCompletionStatus(record);
           const completionDetails = getCompletionDetails(record);
           
+          // Determine which dose is scheduled for today
+          let todayDose = null;
+          if (isDateToday(record.d0_date)) todayDose = 1;
+          else if (isDateToday(record.d3_date)) todayDose = 2;
+          else if (isDateToday(record.d7_date)) todayDose = 3;
+          else if (isDateToday(record.d14_date)) todayDose = 4;
+          else if (isDateToday(record.d28_30_date)) todayDose = 5;
+          
           return {
-            id: record.id || `P${String(index + 1).padStart(3, '0')}`,
-            name: record.patient_name || 'N/A',
-            age: record.patient_age || 'N/A',
-            gender: record.patient_sex || 'N/A',
-            barangay: record.place_bitten_barangay || 'N/A',
-            contact: record.patient_contact || 'N/A',
-            lastVisit: record.appointment_date || record.created_at?.split('T')[0] || 'N/A',
+          id: record.id || `P${String(index + 1).padStart(3, '0')}`,
+          name: record.patient_name || 'N/A',
+          age: record.patient_age || 'N/A',
+          gender: record.patient_sex || 'N/A',
+          barangay: record.place_bitten_barangay || 'N/A',
+          contact: record.patient_contact || 'N/A',
+          lastVisit: record.appointment_date || record.created_at?.split('T')[0] || 'N/A',
             status: completionStatus,
             completionDetails,
-            treatmentRecord: record
+            treatmentRecord: record,
+            todayDose: todayDose // Which dose is scheduled for today
           };
         });
         setPatients(mappedPatients);
@@ -115,8 +124,59 @@ const PatientList = () => {
     }
   };
 
+  // Helper function to check if a date matches today
+  const isDateToday = (dateStr) => {
+    if (!dateStr) return false;
+    try {
+      const today = new Date();
+      const todayDateOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const date = new Date(dateStr);
+      const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      return dateOnly.getTime() === todayDateOnly.getTime();
+    } catch (e) {
+      return false;
+    }
+  };
+
+  // Helper function to get which dose is scheduled for today
+  const getTodayDose = (record) => {
+    if (!record) return null;
+    
+    if (isDateToday(record.d0_date)) return 1; // Awaiting 1st Dose
+    if (isDateToday(record.d3_date)) return 2; // Awaiting 2nd Dose
+    if (isDateToday(record.d7_date)) return 3; // Awaiting 3rd Dose
+    if (isDateToday(record.d14_date)) return 4; // Awaiting 4th Dose
+    if (isDateToday(record.d28_30_date)) return 5; // Awaiting 5th Dose
+    
+    return null;
+  };
+
   const filterPatients = () => {
     let filtered = [...patients];
+
+    // Filter: Only show patients if one of their dose dates matches today
+    // Ensure each patient appears only once by tracking seen patient IDs
+    const seenPatientIds = new Set();
+    filtered = filtered.filter(p => {
+      const record = p.treatmentRecord;
+      if (!record) return false;
+      
+      // Skip if we've already seen this patient (prevent duplicates)
+      if (seenPatientIds.has(p.id)) return false;
+      
+      // Check which dose is scheduled for today (in order: 1st, 2nd, 3rd, 4th, 5th)
+      // getTodayDose returns the FIRST matching dose date
+      const todayDose = getTodayDose(record);
+      if (todayDose === null) return false;
+      
+      // Update the patient's todayDose property to ensure consistency
+      p.todayDose = todayDose;
+      
+      // Mark this patient as seen to prevent duplicates
+      seenPatientIds.add(p.id);
+      
+      return true;
+    });
 
     // Apply status filter
     if (statusFilter !== 'all') {
@@ -995,6 +1055,7 @@ const PatientList = () => {
               <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Name</th>
               <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Age</th>
               <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Contact</th>
+              <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Awaiting Dose</th>
               <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Type of Exposure</th>
               <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Category</th>
               <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Vaccine</th>
@@ -1006,14 +1067,14 @@ const PatientList = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="10" style={{ textAlign: 'center', padding: '40px', border: '1px solid #e5e7eb' }}>
+                <td colSpan="11" style={{ textAlign: 'center', padding: '40px', border: '1px solid #e5e7eb' }}>
                   <div style={{ color: '#64748b', fontSize: '16px' }}>Loading patient data...</div>
                 </td>
               </tr>
             ) : filteredPatients.length === 0 ? (
               <tr>
-                <td colSpan="10" style={{ textAlign: 'center', padding: '40px', border: '1px solid #e5e7eb' }}>
-                  <div style={{ color: '#64748b', fontSize: '16px' }}>No patient records found</div>
+                <td colSpan="11" style={{ textAlign: 'center', padding: '40px', border: '1px solid #e5e7eb' }}>
+                  <div style={{ color: '#64748b', fontSize: '16px' }}>No patients scheduled for today</div>
                 </td>
               </tr>
             ) : (
@@ -1030,6 +1091,13 @@ const PatientList = () => {
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937', fontWeight: '500' }}>{patient.name}</td>
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>{patient.age}</td>
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>{patient.contact}</td>
+                    <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937', fontWeight: '600' }}>
+                      {patient.todayDose === 1 ? 'Awaiting 1st Dose' :
+                       patient.todayDose === 2 ? 'Awaiting 2nd Dose' :
+                       patient.todayDose === 3 ? 'Awaiting 3rd Dose' :
+                       patient.todayDose === 4 ? 'Awaiting 4th Dose' :
+                       patient.todayDose === 5 ? 'Awaiting 5th Dose' : 'N/A'}
+                    </td>
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>{record?.type_of_exposure || 'N/A'}</td>
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>
                       {formatCategoryOfExposure(record?.category_of_exposure)}
