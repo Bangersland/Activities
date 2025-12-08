@@ -1298,6 +1298,94 @@ export const getTreatmentRecordByAppointmentId = async (appointmentId) => {
   }
 };
 
+// Get all unique barangays from barangays table
+export const getAllBarangays = async () => {
+  try {
+    // Query the barangays table directly
+    const { data, error } = await supabase
+      .from('barangays')
+      .select('*');
+
+    if (error) {
+      console.error('Error fetching barangays from barangays table:', error);
+      // Fallback: try to get from other tables if barangays table doesn't exist
+      return await getAllBarangaysFallback();
+    }
+
+    if (!data || data.length === 0) {
+      console.warn('Barangays table is empty, falling back to other tables');
+      return await getAllBarangaysFallback();
+    }
+
+    // Extract barangay names from the table
+    // Try common column names: name, barangay_name, barangay
+    const barangayNames = (data || [])
+      .map(barangay => {
+        // Try different possible column names
+        return barangay.name || 
+               barangay.barangay_name || 
+               barangay.barangay ||
+               barangay.barangay_name ||
+               (Object.keys(barangay).length === 1 ? Object.values(barangay)[0] : null);
+      })
+      .filter(Boolean)
+      .sort();
+
+    console.log(`Fetched ${barangayNames.length} barangays from barangays table`);
+    return { data: barangayNames, error: null };
+  } catch (error) {
+    console.error('Error fetching barangays:', error);
+    // Fallback to extracting from other tables
+    return await getAllBarangaysFallback();
+  }
+};
+
+// Fallback function to extract barangays from appointments and treatment_records
+const getAllBarangaysFallback = async () => {
+  try {
+    const barangaySet = new Set();
+
+    // Get unique barangays from appointments table
+    const { data: appointments, error: appointmentsError } = await supabase
+      .from('appointments')
+      .select('place_bitten, patient_address');
+
+    if (!appointmentsError && appointments) {
+      appointments.forEach(apt => {
+        if (apt.place_bitten && apt.place_bitten.trim()) {
+          barangaySet.add(apt.place_bitten.trim());
+        }
+        if (apt.patient_address && apt.patient_address.trim()) {
+          barangaySet.add(apt.patient_address.trim());
+        }
+      });
+    }
+
+    // Get unique barangays from treatment_records table
+    const { data: treatmentRecords, error: treatmentError } = await supabase
+      .from('treatment_records')
+      .select('place_bitten_barangay, patient_address');
+
+    if (!treatmentError && treatmentRecords) {
+      treatmentRecords.forEach(record => {
+        if (record.place_bitten_barangay && record.place_bitten_barangay.trim()) {
+          barangaySet.add(record.place_bitten_barangay.trim());
+        }
+        if (record.patient_address && record.patient_address.trim()) {
+          barangaySet.add(record.patient_address.trim());
+        }
+      });
+    }
+
+    // Convert to sorted array
+    const sortedBarangays = Array.from(barangaySet).sort();
+    return { data: sortedBarangays, error: null };
+  } catch (error) {
+    console.error('Error in fallback barangay fetch:', error);
+    return { data: [], error };
+  }
+};
+
 // Get treatment records for authenticated patient by user ID
 export const getPatientTreatmentRecordsByUserId = async () => {
   try {

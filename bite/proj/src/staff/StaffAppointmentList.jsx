@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAllAppointments, getVaccines, createTreatmentRecord, updateAppointmentStatus, getCurrentUser, getTreatmentRecordByAppointmentId, getTreatmentRecords } from '../supabase';
+import { getAllAppointments, getVaccines, createTreatmentRecord, updateAppointmentStatus, getCurrentUser, getTreatmentRecordByAppointmentId, getTreatmentRecords, getAllBarangays } from '../supabase';
 import { FaEye, FaTimes, FaSync, FaUsers, FaPlus, FaIdCard } from 'react-icons/fa';
 import GroupManagement from '../components/GroupManagement';
 
@@ -76,12 +76,41 @@ const StaffAppointmentList = () => {
     remarks: ''
   });
   const [savingPatient, setSavingPatient] = useState(false);
+  const [treatmentRecords, setTreatmentRecords] = useState([]);
+  const [allBarangays, setAllBarangays] = useState([]);
 
   // Fetch appointments and vaccines on component mount
   useEffect(() => {
     fetchAppointments();
     fetchVaccines();
+    fetchTreatmentRecords();
+    fetchAllBarangays();
   }, []);
+
+  const fetchAllBarangays = async () => {
+    try {
+      const { data, error } = await getAllBarangays();
+      if (!error && data) {
+        setAllBarangays(data || []);
+        console.log('Fetched barangays from database:', data.length, 'barangays');
+      } else {
+        console.error('Error fetching barangays:', error);
+      }
+    } catch (error) {
+      console.error('Error fetching barangays:', error);
+    }
+  };
+
+  const fetchTreatmentRecords = async () => {
+    try {
+      const { data, error } = await getTreatmentRecords();
+      if (!error && data) {
+        setTreatmentRecords(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching treatment records:', error);
+    }
+  };
 
   const fetchAppointments = async () => {
     try {
@@ -2179,8 +2208,7 @@ const StaffAppointmentList = () => {
                       }}>
                         Address
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={newPatientData.patient_address}
                         onChange={(e) => handleNewPatientInputChange('patient_address', e.target.value)}
                         style={{
@@ -2190,7 +2218,8 @@ const StaffAppointmentList = () => {
                           borderRadius: '8px',
                           fontSize: '14px',
                           outline: 'none',
-                          transition: 'all 0.2s ease'
+                          transition: 'all 0.2s ease',
+                          background: 'white'
                         }}
                         onFocus={(e) => {
                           e.target.style.borderColor = '#3b82f6';
@@ -2200,7 +2229,12 @@ const StaffAppointmentList = () => {
                           e.target.style.borderColor = '#e2e8f0';
                           e.target.style.boxShadow = 'none';
                         }}
-                      />
+                      >
+                        <option value="">Select barangay</option>
+                        {allBarangays.map(barangay => (
+                          <option key={barangay} value={barangay}>{barangay}</option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <label style={{
@@ -2368,8 +2402,7 @@ const StaffAppointmentList = () => {
                       }}>
                         Time Bitten
                       </label>
-                      <input
-                        type="time"
+                      <select
                         value={newPatientData.time_bitten}
                         onChange={(e) => handleNewPatientInputChange('time_bitten', e.target.value)}
                         style={{
@@ -2379,7 +2412,8 @@ const StaffAppointmentList = () => {
                           borderRadius: '8px',
                           fontSize: '14px',
                           outline: 'none',
-                          transition: 'all 0.2s ease'
+                          transition: 'all 0.2s ease',
+                          background: 'white'
                         }}
                         onFocus={(e) => {
                           e.target.style.borderColor = '#3b82f6';
@@ -2389,7 +2423,25 @@ const StaffAppointmentList = () => {
                           e.target.style.borderColor = '#e2e8f0';
                           e.target.style.boxShadow = 'none';
                         }}
-                      />
+                      >
+                        <option value="">Select time</option>
+                        <optgroup label="Early Morning (5 AM - 8 AM)">
+                          <option value="5:00-8:00 AM">5:00-8:00 AM</option>
+                        </optgroup>
+                        <optgroup label="Morning (9 AM - 12 PM)">
+                          <option value="9:00-11:00 AM">9:00-11:00 AM</option>
+                          <option value="11:00 AM - 1:00 PM">11:00 AM - 1:00 PM</option>
+                        </optgroup>
+                        <optgroup label="Afternoon (1 PM - 6 PM)">
+                          <option value="1:00-3:00 PM">1:00-3:00 PM</option>
+                          <option value="3:00-6:00 PM">3:00-6:00 PM</option>
+                        </optgroup>
+                        <optgroup label="Evening/Night (6 PM - 5 AM)">
+                          <option value="6:00-9:00 PM">6:00-9:00 PM</option>
+                          <option value="9:00 PM - 12:00 AM">9:00 PM - 12:00 AM</option>
+                          <option value="12:00-5:00 AM">12:00-5:00 AM</option>
+                        </optgroup>
+                      </select>
                     </div>
                     <div>
                       <label style={{
@@ -2401,8 +2453,7 @@ const StaffAppointmentList = () => {
                       }}>
                         Site of Bite
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={newPatientData.site_of_bite}
                         onChange={(e) => handleNewPatientInputChange('site_of_bite', e.target.value)}
                         style={{
@@ -2412,7 +2463,8 @@ const StaffAppointmentList = () => {
                           borderRadius: '8px',
                           fontSize: '14px',
                           outline: 'none',
-                          transition: 'all 0.2s ease'
+                          transition: 'all 0.2s ease',
+                          background: 'white'
                         }}
                         onFocus={(e) => {
                           e.target.style.borderColor = '#3b82f6';
@@ -2422,7 +2474,14 @@ const StaffAppointmentList = () => {
                           e.target.style.borderColor = '#e2e8f0';
                           e.target.style.boxShadow = 'none';
                         }}
-                      />
+                      >
+                        <option value="">Select site</option>
+                        <option value="Head & Neck">Head & Neck</option>
+                        <option value="Upper Extremity">Upper Extremity</option>
+                        <option value="Abdomen">Abdomen</option>
+                        <option value="Chest">Chest</option>
+                        <option value="Lower Extremity">Lower Extremity</option>
+                      </select>
                     </div>
                     <div>
                       <label style={{
@@ -2434,8 +2493,7 @@ const StaffAppointmentList = () => {
                       }}>
                         Biting Animal
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={newPatientData.biting_animal}
                         onChange={(e) => handleNewPatientInputChange('biting_animal', e.target.value)}
                         style={{
@@ -2445,7 +2503,8 @@ const StaffAppointmentList = () => {
                           borderRadius: '8px',
                           fontSize: '14px',
                           outline: 'none',
-                          transition: 'all 0.2s ease'
+                          transition: 'all 0.2s ease',
+                          background: 'white'
                         }}
                         onFocus={(e) => {
                           e.target.style.borderColor = '#3b82f6';
@@ -2455,7 +2514,14 @@ const StaffAppointmentList = () => {
                           e.target.style.borderColor = '#e2e8f0';
                           e.target.style.boxShadow = 'none';
                         }}
-                      />
+                      >
+                        <option value="">Select animal</option>
+                        <option value="Stray Dog">Stray Dog</option>
+                        <option value="Pet Dog">Pet Dog</option>
+                        <option value="Stray Cat">Stray Cat</option>
+                        <option value="Pet Cat">Pet Cat</option>
+                        <option value="Other Animal">Other Animal</option>
+                      </select>
                     </div>
                     <div>
                       <label style={{
@@ -2467,8 +2533,7 @@ const StaffAppointmentList = () => {
                       }}>
                         Animal Status
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={newPatientData.animal_status}
                         onChange={(e) => handleNewPatientInputChange('animal_status', e.target.value)}
                         style={{
@@ -2478,7 +2543,8 @@ const StaffAppointmentList = () => {
                           borderRadius: '8px',
                           fontSize: '14px',
                           outline: 'none',
-                          transition: 'all 0.2s ease'
+                          transition: 'all 0.2s ease',
+                          background: 'white'
                         }}
                         onFocus={(e) => {
                           e.target.style.borderColor = '#3b82f6';
@@ -2488,7 +2554,12 @@ const StaffAppointmentList = () => {
                           e.target.style.borderColor = '#e2e8f0';
                           e.target.style.boxShadow = 'none';
                         }}
-                      />
+                      >
+                        <option value="">Select status</option>
+                        <option value="Immunized">Immunized</option>
+                        <option value="Unimmunized">Unimmunized</option>
+                        <option value="Unknown">Unknown</option>
+                      </select>
                     </div>
                     <div>
                       <label style={{
@@ -2500,8 +2571,7 @@ const StaffAppointmentList = () => {
                       }}>
                         Place Bitten (Barangay)
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={newPatientData.place_bitten_barangay}
                         onChange={(e) => handleNewPatientInputChange('place_bitten_barangay', e.target.value)}
                         style={{
@@ -2511,7 +2581,8 @@ const StaffAppointmentList = () => {
                           borderRadius: '8px',
                           fontSize: '14px',
                           outline: 'none',
-                          transition: 'all 0.2s ease'
+                          transition: 'all 0.2s ease',
+                          background: 'white'
                         }}
                         onFocus={(e) => {
                           e.target.style.borderColor = '#3b82f6';
@@ -2521,7 +2592,12 @@ const StaffAppointmentList = () => {
                           e.target.style.borderColor = '#e2e8f0';
                           e.target.style.boxShadow = 'none';
                         }}
-                      />
+                      >
+                        <option value="">Select barangay where bite occurred</option>
+                        {allBarangays.map(barangay => (
+                          <option key={barangay} value={barangay}>{barangay}</option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <label style={{
@@ -2533,8 +2609,7 @@ const StaffAppointmentList = () => {
                       }}>
                         Provoked
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={newPatientData.provoked}
                         onChange={(e) => handleNewPatientInputChange('provoked', e.target.value)}
                         style={{
@@ -2544,7 +2619,8 @@ const StaffAppointmentList = () => {
                           borderRadius: '8px',
                           fontSize: '14px',
                           outline: 'none',
-                          transition: 'all 0.2s ease'
+                          transition: 'all 0.2s ease',
+                          background: 'white'
                         }}
                         onFocus={(e) => {
                           e.target.style.borderColor = '#3b82f6';
@@ -2554,7 +2630,11 @@ const StaffAppointmentList = () => {
                           e.target.style.borderColor = '#e2e8f0';
                           e.target.style.boxShadow = 'none';
                         }}
-                      />
+                      >
+                        <option value="">Select</option>
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </select>
                     </div>
                     <div>
                       <label style={{
@@ -2566,8 +2646,7 @@ const StaffAppointmentList = () => {
                       }}>
                         Local Wound Treatment
                       </label>
-                      <input
-                        type="text"
+                      <select
                         value={newPatientData.local_wound_treatment}
                         onChange={(e) => handleNewPatientInputChange('local_wound_treatment', e.target.value)}
                         style={{
@@ -2577,7 +2656,8 @@ const StaffAppointmentList = () => {
                           borderRadius: '8px',
                           fontSize: '14px',
                           outline: 'none',
-                          transition: 'all 0.2s ease'
+                          transition: 'all 0.2s ease',
+                          background: 'white'
                         }}
                         onFocus={(e) => {
                           e.target.style.borderColor = '#3b82f6';
@@ -2587,7 +2667,11 @@ const StaffAppointmentList = () => {
                           e.target.style.borderColor = '#e2e8f0';
                           e.target.style.boxShadow = 'none';
                         }}
-                      />
+                      >
+                        <option value="">Select</option>
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </select>
                     </div>
                   </div>
                 </div>
