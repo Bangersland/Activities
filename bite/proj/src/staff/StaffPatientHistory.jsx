@@ -173,28 +173,10 @@ const StaffPatientHistory = () => {
   const filterPatients = () => {
     let filtered = [...patients];
 
-    // Filter: Only show patients if one of their dose dates matches today
-    // Ensure each patient appears only once by tracking seen patient IDs
-    const seenPatientIds = new Set();
+    // Filter out patients without treatment records
     filtered = filtered.filter(p => {
       const record = p.treatmentRecord;
-      if (!record) return false;
-      
-      // Skip if we've already seen this patient (prevent duplicates)
-      if (seenPatientIds.has(p.id)) return false;
-      
-      // Check which dose is scheduled for today (in order: 1st, 2nd, 3rd, 4th, 5th)
-      // getTodayDose returns the FIRST matching dose date
-      const todayDose = getTodayDose(record);
-      if (todayDose === null) return false;
-      
-      // Update the patient's todayDose property to ensure consistency
-      p.todayDose = todayDose;
-      
-      // Mark this patient as seen to prevent duplicates
-      seenPatientIds.add(p.id);
-      
-      return true;
+      return !!record;
     });
 
     // Apply status filter
@@ -396,7 +378,7 @@ const StaffPatientHistory = () => {
         'D14 Status': record?.d14_status || 'N/A',
         'D28/30 Status': record?.d28_30_status || 'N/A',
         'Completion Status': patient.status === 'completed' ? 'Completed' : patient.status === 'incomplete' ? 'Incomplete' : 'Ongoing',
-        'Completed Doses': `${patient.completionDetails.completed}/5`,
+        'Completed Doses': `${patient.completionDetails.completed}/${patient.completionDetails.total}`,
         'Remarks': record?.remarks || 'N/A'
       };
     });
@@ -1099,7 +1081,7 @@ const StaffPatientHistory = () => {
                     </td>
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>{record?.vaccine_brand_name || 'N/A'}</td>
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>
-                      {patient.completionDetails.completed}/5
+                      {patient.completionDetails.completed}/{patient.completionDetails.total}
                     </td>
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb' }}>
                       <span className={patient.status === 'completed' ? 'status-completed' : patient.status === 'incomplete' ? 'status-incomplete' : 'status-ongoing'}
@@ -1408,16 +1390,33 @@ const StaffPatientHistory = () => {
 
                   {/* Dose Information */}
                   <div>
-                    <h3 style={{ 
+                    <div style={{ 
                       margin: '0 0 16px 0', 
-                      color: '#374151', 
-                      fontSize: '18px',
-                      fontWeight: '700',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
                       borderBottom: '2px solid #3b82f6',
                       paddingBottom: '8px'
                     }}>
-                      Dose Information
-                    </h3>
+                      <h3 style={{ 
+                        margin: 0,
+                        color: '#374151', 
+                        fontSize: '18px',
+                        fontWeight: '700'
+                      }}>
+                        Dose Information
+                      </h3>
+                      <div style={{
+                        fontSize: '16px',
+                        fontWeight: '600',
+                        color: selectedPatient.status === 'completed' ? '#059669' : selectedPatient.status === 'incomplete' ? '#dc2626' : '#f59e0b',
+                        padding: '4px 12px',
+                        borderRadius: '6px',
+                        backgroundColor: selectedPatient.status === 'completed' ? '#d1fae5' : selectedPatient.status === 'incomplete' ? '#fee2e2' : '#fef3c7'
+                      }}>
+                        {selectedPatient.completionDetails.completed}/{selectedPatient.completionDetails.total}
+                      </div>
+                    </div>
                     <div style={{ overflowX: 'auto' }}>
                       <table style={{
                         width: '100%',

@@ -30,24 +30,39 @@ const PatientList = () => {
 
   // Calculate patient completion status
   const calculateCompletionStatus = (record) => {
-    const doses = [
-      record.d0_status,
-      record.d3_status,
-      record.d7_status,
-      record.d14_status,
-      record.d28_30_status
-    ];
-
-    // Check if all doses are completed
-    const allCompleted = doses.every(status => status === 'completed');
+    // Only consider doses that have scheduled dates
+    const scheduledDoses = [];
     
-    // Check if any dose is missed - only mark as incomplete if there are missed doses
-    const hasMissed = doses.some(status => status === 'missed');
+    if (record.d0_date) {
+      scheduledDoses.push({ status: record.d0_status, date: record.d0_date });
+    }
+    if (record.d3_date) {
+      scheduledDoses.push({ status: record.d3_status, date: record.d3_date });
+    }
+    if (record.d7_date) {
+      scheduledDoses.push({ status: record.d7_status, date: record.d7_date });
+    }
+    if (record.d14_date) {
+      scheduledDoses.push({ status: record.d14_status, date: record.d14_date });
+    }
+    if (record.d28_30_date) {
+      scheduledDoses.push({ status: record.d28_30_status, date: record.d28_30_date });
+    }
+
+    // If no scheduled doses, return 'ongoing'
+    if (scheduledDoses.length === 0) {
+      return 'ongoing';
+    }
+
+    // Check if all scheduled doses are completed
+    const allCompleted = scheduledDoses.every(dose => dose.status === 'completed');
+    
+    // Check if any scheduled dose is missed
+    const hasMissed = scheduledDoses.some(dose => dose.status === 'missed');
 
     if (allCompleted) {
       return 'completed';
     } else if (hasMissed) {
-      // Only mark as incomplete if there are missed doses
       return 'incomplete';
     }
     
@@ -55,9 +70,9 @@ const PatientList = () => {
     return 'ongoing';
   };
 
-  // Get completion details
+  // Get completion details - only count doses that have scheduled dates
   const getCompletionDetails = (record) => {
-    const doses = [
+    const allDoses = [
       { name: 'D0', status: record.d0_status, date: record.d0_date },
       { name: 'D3', status: record.d3_status, date: record.d3_date },
       { name: 'D7', status: record.d7_status, date: record.d7_date },
@@ -65,16 +80,20 @@ const PatientList = () => {
       { name: 'D28/30', status: record.d28_30_status, date: record.d28_30_date }
     ];
 
-    const completed = doses.filter(d => d.status === 'completed').length;
-    const missed = doses.filter(d => d.status === 'missed').length;
-    const pending = doses.filter(d => !d.status || d.status === 'pending').length;
+    // Only include doses that have scheduled dates
+    const scheduledDoses = allDoses.filter(d => d.date);
+    
+    // Count only scheduled doses
+    const completed = scheduledDoses.filter(d => d.status === 'completed').length;
+    const missed = scheduledDoses.filter(d => d.status === 'missed').length;
+    const pending = scheduledDoses.filter(d => !d.status || d.status === 'pending').length;
 
     return {
-      total: 5,
+      total: scheduledDoses.length, // Total is based on scheduled doses only
       completed,
       missed,
       pending,
-      doses
+      doses: allDoses // Return all doses (with blank dates if not scheduled)
     };
   };
 
@@ -154,28 +173,10 @@ const PatientList = () => {
   const filterPatients = () => {
     let filtered = [...patients];
 
-    // Filter: Only show patients if one of their dose dates matches today
-    // Ensure each patient appears only once by tracking seen patient IDs
-    const seenPatientIds = new Set();
+    // Filter out patients without treatment records
     filtered = filtered.filter(p => {
       const record = p.treatmentRecord;
-      if (!record) return false;
-      
-      // Skip if we've already seen this patient (prevent duplicates)
-      if (seenPatientIds.has(p.id)) return false;
-      
-      // Check which dose is scheduled for today (in order: 1st, 2nd, 3rd, 4th, 5th)
-      // getTodayDose returns the FIRST matching dose date
-      const todayDose = getTodayDose(record);
-      if (todayDose === null) return false;
-      
-      // Update the patient's todayDose property to ensure consistency
-      p.todayDose = todayDose;
-      
-      // Mark this patient as seen to prevent duplicates
-      seenPatientIds.add(p.id);
-      
-      return true;
+      return !!record;
     });
 
     // Apply status filter
@@ -377,7 +378,7 @@ const PatientList = () => {
         'D14 Status': record?.d14_status || 'N/A',
         'D28/30 Status': record?.d28_30_status || 'N/A',
         'Completion Status': patient.status === 'completed' ? 'Completed' : patient.status === 'incomplete' ? 'Incomplete' : 'Ongoing',
-        'Completed Doses': `${patient.completionDetails.completed}/5`,
+        'Completed Doses': `${patient.completionDetails.completed}/${patient.completionDetails.total}`,
         'Remarks': record?.remarks || 'N/A'
       };
     });
@@ -1057,7 +1058,7 @@ const PatientList = () => {
             ) : filteredPatients.length === 0 ? (
               <tr>
                 <td colSpan="10" style={{ textAlign: 'center', padding: '40px', border: '1px solid #e5e7eb' }}>
-                  <div style={{ color: '#64748b', fontSize: '16px' }}>No patients scheduled for today</div>
+                  <div style={{ color: '#64748b', fontSize: '16px' }}>No patients found</div>
                 </td>
               </tr>
             ) : (
@@ -1080,7 +1081,7 @@ const PatientList = () => {
                     </td>
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>{record?.vaccine_brand_name || 'N/A'}</td>
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>
-                      {patient.completionDetails.completed}/5
+                      {patient.completionDetails.completed}/{patient.completionDetails.total}
                     </td>
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb' }}>
                       <span className={patient.status === 'completed' ? 'status-completed' : patient.status === 'incomplete' ? 'status-incomplete' : 'status-ongoing'}
@@ -1278,7 +1279,7 @@ const PatientList = () => {
                         fontWeight: '700',
                         color: selectedPatient.status === 'completed' ? '#059669' : selectedPatient.status === 'incomplete' ? '#dc2626' : '#f59e0b'
                       }}>
-                        {selectedPatient.completionDetails.completed}/5
+                        {selectedPatient.completionDetails.completed}/{selectedPatient.completionDetails.total}
                       </div>
                     </div>
                   </div>
@@ -1322,7 +1323,7 @@ const PatientList = () => {
                       </div>
                       <div>
                         <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Appointment Date</label>
-                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>{record.appointment_date || 'N/A'}</p>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>{record.appointment_date ? new Date(record.appointment_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}</p>
                       </div>
                     </div>
                   </div>
@@ -1389,16 +1390,33 @@ const PatientList = () => {
 
                   {/* Dose Information */}
                   <div>
-                    <h3 style={{ 
+                    <div style={{ 
                       margin: '0 0 16px 0', 
-                      color: '#374151', 
-                      fontSize: '18px',
-                      fontWeight: '700',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
                       borderBottom: '2px solid #3b82f6',
                       paddingBottom: '8px'
                     }}>
-                      Dose Information
-                    </h3>
+                      <h3 style={{ 
+                        margin: 0,
+                        color: '#374151', 
+                        fontSize: '18px',
+                        fontWeight: '700'
+                      }}>
+                        Dose Information
+                      </h3>
+                      <div style={{
+                        fontSize: '16px',
+                        fontWeight: '600',
+                        color: selectedPatient.status === 'completed' ? '#059669' : selectedPatient.status === 'incomplete' ? '#dc2626' : '#f59e0b',
+                        padding: '4px 12px',
+                        borderRadius: '6px',
+                        backgroundColor: selectedPatient.status === 'completed' ? '#d1fae5' : selectedPatient.status === 'incomplete' ? '#fee2e2' : '#fef3c7'
+                      }}>
+                        {selectedPatient.completionDetails.completed}/{selectedPatient.completionDetails.total}
+                      </div>
+                    </div>
                     <div style={{ overflowX: 'auto' }}>
                       <table style={{
                         width: '100%',
@@ -1427,7 +1445,7 @@ const PatientList = () => {
                             onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
                             onMouseLeave={(e) => e.currentTarget.style.background = 'white'}>
                               <td style={{ padding: '12px', fontWeight: '600', color: '#1f2937' }}>{dose.number}</td>
-                              <td style={{ padding: '12px', color: '#1f2937' }}>{dose.date || 'N/A'}</td>
+                              <td style={{ padding: '12px', color: '#1f2937' }}>{dose.date ? new Date(dose.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}</td>
                               <td style={{ padding: '12px' }}>
                                 <span style={{
                                   padding: '6px 12px',
