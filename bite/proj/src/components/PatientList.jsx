@@ -743,10 +743,6 @@ const PatientList = () => {
     }, 250);
   };
 
-  const completedCount = patients.filter(p => p.status === 'completed').length;
-  const incompleteCount = patients.filter(p => p.status === 'incomplete').length;
-  const ongoingCount = patients.filter(p => p.status === 'ongoing').length;
-
   return (
     <div className="content-section">
       <div style={{ 
@@ -761,18 +757,6 @@ const PatientList = () => {
           <h2 style={{ margin: 0, fontSize: '28px', fontWeight: '700', color: '#1f2937' }}>
             Patient List
           </h2>
-          <div style={{ 
-            display: 'flex', 
-            gap: '16px', 
-            marginTop: '8px',
-            fontSize: '14px',
-            color: '#64748b'
-          }}>
-            <span><strong>{patients.length}</strong> Total Patients</span>
-            <span style={{ color: '#059669' }}><strong>{completedCount}</strong> Completed</span>
-            <span style={{ color: '#dc2626' }}><strong>{incompleteCount}</strong> Incomplete</span>
-            <span style={{ color: '#f59e0b' }}><strong>{ongoingCount}</strong> Ongoing</span>
-          </div>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button 
@@ -1055,7 +1039,6 @@ const PatientList = () => {
               <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Name</th>
               <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Age</th>
               <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Contact</th>
-              <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Awaiting Dose</th>
               <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Type of Exposure</th>
               <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Category</th>
               <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Vaccine</th>
@@ -1067,13 +1050,13 @@ const PatientList = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="11" style={{ textAlign: 'center', padding: '40px', border: '1px solid #e5e7eb' }}>
+                <td colSpan="10" style={{ textAlign: 'center', padding: '40px', border: '1px solid #e5e7eb' }}>
                   <div style={{ color: '#64748b', fontSize: '16px' }}>Loading patient data...</div>
                 </td>
               </tr>
             ) : filteredPatients.length === 0 ? (
               <tr>
-                <td colSpan="11" style={{ textAlign: 'center', padding: '40px', border: '1px solid #e5e7eb' }}>
+                <td colSpan="10" style={{ textAlign: 'center', padding: '40px', border: '1px solid #e5e7eb' }}>
                   <div style={{ color: '#64748b', fontSize: '16px' }}>No patients scheduled for today</div>
                 </td>
               </tr>
@@ -1091,13 +1074,6 @@ const PatientList = () => {
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937', fontWeight: '500' }}>{patient.name}</td>
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>{patient.age}</td>
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>{patient.contact}</td>
-                    <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937', fontWeight: '600' }}>
-                      {patient.todayDose === 1 ? 'Awaiting 1st Dose' :
-                       patient.todayDose === 2 ? 'Awaiting 2nd Dose' :
-                       patient.todayDose === 3 ? 'Awaiting 3rd Dose' :
-                       patient.todayDose === 4 ? 'Awaiting 4th Dose' :
-                       patient.todayDose === 5 ? 'Awaiting 5th Dose' : 'N/A'}
-                    </td>
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>{record?.type_of_exposure || 'N/A'}</td>
                     <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>
                       {formatCategoryOfExposure(record?.category_of_exposure)}

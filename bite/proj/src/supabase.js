@@ -1425,35 +1425,45 @@ export const getPatientsByDose = async (doseNumber, includeCompleted = false) =>
     }
 
     // Enrich data with staff names who updated the status
-    const enrichedData = await Promise.all(
-      (data || []).map(async (record) => {
-        const updatedBy = record[fieldNames.updatedBy];
-        let updatedByName = null;
-        
-        if (updatedBy) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('first_name, last_name, username')
-            .eq('id', updatedBy)
-            .single();
-          
-          if (profile) {
-            updatedByName = profile.first_name && profile.last_name
-              ? `${profile.first_name} ${profile.last_name}`
-              : profile.username || 'Unknown';
-          }
-        }
+    // Batch profile lookups to avoid N+1 query problem
+    const uniqueUserIds = [...new Set(
+      (data || [])
+        .map(record => record[fieldNames.updatedBy])
+        .filter(id => id !== null && id !== undefined)
+    )];
+    
+    // Fetch all profiles in one query
+    const profileMap = new Map();
+    if (uniqueUserIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, username')
+        .in('id', uniqueUserIds);
+      
+      if (profiles) {
+        profiles.forEach(profile => {
+          const name = profile.first_name && profile.last_name
+            ? `${profile.first_name} ${profile.last_name}`
+            : profile.username || 'Unknown';
+          profileMap.set(profile.id, name);
+        });
+      }
+    }
+    
+    // Map profiles to records
+    const enrichedData = (data || []).map((record) => {
+      const updatedBy = record[fieldNames.updatedBy];
+      const updatedByName = updatedBy ? (profileMap.get(updatedBy) || null) : null;
 
-        return {
-          ...record,
-          updatedByName,
-          doseNumber,
-          doseDate: record[fieldNames.date],
-          doseStatus: record[fieldNames.status] || 'pending',
-          doseUpdatedAt: record[fieldNames.updatedAt]
-        };
-      })
-    );
+      return {
+        ...record,
+        updatedByName,
+        doseNumber,
+        doseDate: record[fieldNames.date],
+        doseStatus: record[fieldNames.status] || 'pending',
+        doseUpdatedAt: record[fieldNames.updatedAt]
+      };
+    });
 
     return { data: enrichedData, error: null };
   } catch (error) {

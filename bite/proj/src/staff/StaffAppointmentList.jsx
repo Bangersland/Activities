@@ -108,7 +108,16 @@ const StaffAppointmentList = () => {
         console.error('Error fetching vaccines:', error);
       } else {
         console.log('Vaccines fetched:', data); // Debug log
-        setVaccines(data || []);
+        // Filter out expired vaccines
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const validVaccines = (data || []).filter(vaccine => {
+          if (!vaccine.expiry_date) return false;
+          const expiryDate = new Date(vaccine.expiry_date);
+          expiryDate.setHours(0, 0, 0, 0);
+          return expiryDate > today; // Only include vaccines that haven't expired
+        });
+        setVaccines(validVaccines);
       }
     } catch (error) {
       console.error('Error fetching vaccines:', error);
@@ -286,32 +295,32 @@ const StaffAppointmentList = () => {
         patient_address: selectedAppointment.patient_address,
         patient_age: selectedAppointment.patient_age,
         patient_sex: selectedAppointment.patient_sex,
-        appointment_date: selectedAppointment.appointment_date,
+        appointment_date: selectedAppointment.appointment_date || null, // Allow null if no appointment date
         
         // Bite Information
-        date_bitten: selectedAppointment.date_bitten,
-        time_bitten: selectedAppointment.time_bitten,
-        site_of_bite: selectedAppointment.site_of_bite,
-        biting_animal: selectedAppointment.biting_animal,
-        animal_status: selectedAppointment.animal_status,
-        place_bitten_barangay: selectedAppointment.place_bitten,
-        provoked: selectedAppointment.provoke,
-        local_wound_treatment: selectedAppointment.washing_of_bite || selectedAppointment.local_wound_treatment,
+        date_bitten: selectedAppointment.date_bitten || null,
+        time_bitten: selectedAppointment.time_bitten || null,
+        site_of_bite: selectedAppointment.site_of_bite || null,
+        biting_animal: selectedAppointment.biting_animal || null,
+        animal_status: selectedAppointment.animal_status || null,
+        place_bitten_barangay: selectedAppointment.place_bitten || null,
+        provoked: selectedAppointment.provoke || null,
+        local_wound_treatment: selectedAppointment.washing_of_bite || selectedAppointment.local_wound_treatment || null,
         
         // Treatment Details
-        type_of_exposure: treatmentData.type_of_exposure,
-        category_of_exposure: treatmentData.category_of_exposure,
-        vaccine_brand_name: treatmentData.vaccine_brand_name,
-        treatment_to_be_given: treatmentData.treatment_to_be_given,
-        route: treatmentData.route,
-        rig: treatmentData.rig,
+        type_of_exposure: treatmentData.type_of_exposure || null,
+        category_of_exposure: treatmentData.category_of_exposure || {},
+        vaccine_brand_name: treatmentData.vaccine_brand_name || null,
+        treatment_to_be_given: treatmentData.treatment_to_be_given || {},
+        route: treatmentData.route || null,
+        rig: treatmentData.rig || null,
         d0_date: treatmentData.d0_date || null,
         d3_date: treatmentData.d3_date || null,
         d7_date: treatmentData.d7_date || null,
         d14_date: treatmentData.d14_date || null,
         d28_30_date: treatmentData.d28_30_date || null,
         status_of_animal_date: treatmentData.status_of_animal || null,
-        remarks: treatmentData.remarks,
+        remarks: treatmentData.remarks || null,
         
         created_by: user?.id
       };

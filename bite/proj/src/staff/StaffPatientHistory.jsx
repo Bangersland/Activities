@@ -1,93 +1,289 @@
-import React, { useState, useEffect } from 'react';
-import { FaEye, FaSearch, FaTimes } from 'react-icons/fa';
-import { getTreatmentRecords, supabase } from '../supabase';
+import React, { useState, useRef, useEffect } from 'react';
+import { FaFileAlt, FaPrint, FaDownload, FaTimes, FaCheckCircle, FaExclamationCircle, FaFilter, FaClock, FaIdCard } from 'react-icons/fa';
+import * as XLSX from 'xlsx';
+import { getTreatmentRecords, getAllAppointments, supabase } from '../supabase';
 
 const StaffPatientHistory = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [treatmentRecords, setTreatmentRecords] = useState([]);
+  const printRef = useRef(null);
+  const [patients, setPatients] = useState([]);
+  const [filteredPatients, setFilteredPatients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [selectedPatient, setSelectedPatient] = useState(null);
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-  const [patientRecords, setPatientRecords] = useState([]);
+  const [showModal, setShowModal] = useState(false);
   const [appointmentStatuses, setAppointmentStatuses] = useState({});
-  const [creatorNames, setCreatorNames] = useState({});
   const [staffNames, setStaffNames] = useState({});
-  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'completed', 'incomplete', 'ongoing'
+  const [barangayFilter, setBarangayFilter] = useState('');
+  const [yearFilter, setYearFilter] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
 
+  // Fetch treatment records on component mount
   useEffect(() => {
-    fetchTreatmentRecords();
+    fetchPatients();
+    fetchAppointmentStatuses();
   }, []);
 
-  const fetchTreatmentRecords = async () => {
+  useEffect(() => {
+    filterPatients();
+  }, [patients, searchTerm, statusFilter, barangayFilter, yearFilter, monthFilter]);
+
+  // Calculate patient completion status
+  const calculateCompletionStatus = (record) => {
+    // Only consider doses that have scheduled dates
+    const scheduledDoses = [];
+    
+    if (record.d0_date) {
+      scheduledDoses.push({ status: record.d0_status, date: record.d0_date });
+    }
+    if (record.d3_date) {
+      scheduledDoses.push({ status: record.d3_status, date: record.d3_date });
+    }
+    if (record.d7_date) {
+      scheduledDoses.push({ status: record.d7_status, date: record.d7_date });
+    }
+    if (record.d14_date) {
+      scheduledDoses.push({ status: record.d14_status, date: record.d14_date });
+    }
+    if (record.d28_30_date) {
+      scheduledDoses.push({ status: record.d28_30_status, date: record.d28_30_date });
+    }
+
+    // If no scheduled doses, return 'ongoing'
+    if (scheduledDoses.length === 0) {
+      return 'ongoing';
+    }
+
+    // Check if all scheduled doses are completed
+    const allCompleted = scheduledDoses.every(dose => dose.status === 'completed');
+    
+    // Check if any scheduled dose is missed
+    const hasMissed = scheduledDoses.some(dose => dose.status === 'missed');
+
+    if (allCompleted) {
+      return 'completed';
+    } else if (hasMissed) {
+      return 'incomplete';
+    }
+    
+    // If no missed doses but not all completed, it's still ongoing (pending doses)
+    return 'ongoing';
+  };
+
+  // Get completion details - only count doses that have scheduled dates
+  const getCompletionDetails = (record) => {
+    const allDoses = [
+      { name: 'D0', status: record.d0_status, date: record.d0_date },
+      { name: 'D3', status: record.d3_status, date: record.d3_date },
+      { name: 'D7', status: record.d7_status, date: record.d7_date },
+      { name: 'D14', status: record.d14_status, date: record.d14_date },
+      { name: 'D28/30', status: record.d28_30_status, date: record.d28_30_date }
+    ];
+
+    // Only include doses that have scheduled dates
+    const scheduledDoses = allDoses.filter(d => d.date);
+    
+    // Count only scheduled doses
+    const completed = scheduledDoses.filter(d => d.status === 'completed').length;
+    const missed = scheduledDoses.filter(d => d.status === 'missed').length;
+    const pending = scheduledDoses.filter(d => !d.status || d.status === 'pending').length;
+
+    return {
+      total: scheduledDoses.length, // Total is based on scheduled doses only
+      completed,
+      missed,
+      pending,
+      doses: allDoses // Return all doses (with blank dates if not scheduled)
+    };
+  };
+
+  const fetchPatients = async () => {
     try {
       setLoading(true);
-      setError(null);
-      const { data, error: fetchError } = await getTreatmentRecords();
+      const { data, error } = await getTreatmentRecords();
       
-      if (fetchError) {
-        console.error('Error fetching treatment records:', fetchError);
-        setError(fetchError.message || 'Failed to fetch treatment records');
-        setTreatmentRecords([]);
-        return;
-      }
-      
-      console.log('Fetched treatment records:', data?.length || 0, 'records');
-      setTreatmentRecords(data || []);
-      
-      if (!data || data.length === 0) {
-        console.log('No treatment records found in database');
+      if (error) {
+        console.error('Error fetching treatment records:', error);
+        setPatients([]);
+      } else {
+        // Map treatment records to patient list format with completion status
+        const mappedPatients = (data || []).map((record, index) => {
+          const completionStatus = calculateCompletionStatus(record);
+          const completionDetails = getCompletionDetails(record);
+          
+          // Determine which dose is scheduled for today
+          let todayDose = null;
+          if (isDateToday(record.d0_date)) todayDose = 1;
+          else if (isDateToday(record.d3_date)) todayDose = 2;
+          else if (isDateToday(record.d7_date)) todayDose = 3;
+          else if (isDateToday(record.d14_date)) todayDose = 4;
+          else if (isDateToday(record.d28_30_date)) todayDose = 5;
+          
+          return {
+          id: record.id || `P${String(index + 1).padStart(3, '0')}`,
+          name: record.patient_name || 'N/A',
+          age: record.patient_age || 'N/A',
+          gender: record.patient_sex || 'N/A',
+          barangay: record.place_bitten_barangay || 'N/A',
+          contact: record.patient_contact || 'N/A',
+          lastVisit: record.appointment_date || record.created_at?.split('T')[0] || 'N/A',
+            status: completionStatus,
+            completionDetails,
+            treatmentRecord: record,
+            todayDose: todayDose // Which dose is scheduled for today
+          };
+        });
+        setPatients(mappedPatients);
       }
     } catch (err) {
       console.error('Error:', err);
-      setError(err.message || 'An error occurred while fetching records');
-      setTreatmentRecords([]);
+      setPatients([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Group treatment records by patient
-  const getGroupedPatients = () => {
-    if (!treatmentRecords || treatmentRecords.length === 0) {
-      return [];
+  // Helper function to check if a date matches today
+  const isDateToday = (dateStr) => {
+    if (!dateStr) return false;
+    try {
+      const today = new Date();
+      const todayDateOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const date = new Date(dateStr);
+      const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      return dateOnly.getTime() === todayDateOnly.getTime();
+    } catch (e) {
+      return false;
     }
+  };
+
+  // Helper function to get which dose is scheduled for today
+  const getTodayDose = (record) => {
+    if (!record) return null;
     
-    const grouped = {};
+    if (isDateToday(record.d0_date)) return 1; // Awaiting 1st Dose
+    if (isDateToday(record.d3_date)) return 2; // Awaiting 2nd Dose
+    if (isDateToday(record.d7_date)) return 3; // Awaiting 3rd Dose
+    if (isDateToday(record.d14_date)) return 4; // Awaiting 4th Dose
+    if (isDateToday(record.d28_30_date)) return 5; // Awaiting 5th Dose
     
-    treatmentRecords.forEach((record, index) => {
-      // Use patient_name, patient_contact, or a combination as key
-      const patientName = record.patient_name?.trim() || 'Unknown Patient';
-      const patientContact = record.patient_contact?.trim() || '';
-      const key = patientName + (patientContact ? `_${patientContact}` : '') || `record_${index}`;
+    return null;
+  };
+
+  const filterPatients = () => {
+    let filtered = [...patients];
+
+    // Filter: Only show patients if one of their dose dates matches today
+    // Ensure each patient appears only once by tracking seen patient IDs
+    const seenPatientIds = new Set();
+    filtered = filtered.filter(p => {
+      const record = p.treatmentRecord;
+      if (!record) return false;
       
-      if (!grouped[key]) {
-        grouped[key] = {
-          patientName: patientName,
-          patientAge: record.patient_age,
-          patientSex: record.patient_sex,
-          patientContact: patientContact,
-          patientAddress: record.patient_address?.trim() || '',
-          barangay: record.place_bitten_barangay?.trim() || '',
-          records: []
-        };
-      }
+      // Skip if we've already seen this patient (prevent duplicates)
+      if (seenPatientIds.has(p.id)) return false;
       
-      grouped[key].records.push(record);
+      // Check which dose is scheduled for today (in order: 1st, 2nd, 3rd, 4th, 5th)
+      // getTodayDose returns the FIRST matching dose date
+      const todayDose = getTodayDose(record);
+      if (todayDose === null) return false;
+      
+      // Update the patient's todayDose property to ensure consistency
+      p.todayDose = todayDose;
+      
+      // Mark this patient as seen to prevent duplicates
+      seenPatientIds.add(p.id);
+      
+      return true;
     });
-    
-    // Sort records by date (most recent first) for each patient
-    Object.values(grouped).forEach(patient => {
-      patient.records.sort((a, b) => {
-        const dateA = new Date(a.created_at || a.appointment_date || 0);
-        const dateB = new Date(b.created_at || b.appointment_date || 0);
-        return dateB - dateA;
+
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(p => p.status === statusFilter);
+    }
+
+    // Apply barangay filter
+    if (barangayFilter) {
+      filtered = filtered.filter(p => p.barangay === barangayFilter);
+    }
+
+    // Apply year filter
+    if (yearFilter) {
+      filtered = filtered.filter(p => {
+        const record = p.treatmentRecord;
+        const date = record?.appointment_date || record?.created_at;
+        if (!date) return false;
+        const year = new Date(date).getFullYear().toString();
+        return year === yearFilter;
       });
+    }
+
+    // Apply month filter
+    if (monthFilter) {
+      filtered = filtered.filter(p => {
+        const record = p.treatmentRecord;
+        const date = record?.appointment_date || record?.created_at;
+        if (!date) return false;
+        const month = (new Date(date).getMonth() + 1).toString();
+        return month === monthFilter;
+      });
+    }
+
+    // Apply search filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(p => 
+        p.name.toLowerCase().includes(term) ||
+        p.contact.includes(term) ||
+        p.id.toLowerCase().includes(term) ||
+        p.barangay.toLowerCase().includes(term)
+      );
+    }
+
+    setFilteredPatients(filtered);
+  };
+
+  // Get unique barangays for filter
+  const getUniqueBarangays = () => {
+    const barangays = [...new Set(patients.map(p => p.barangay).filter(Boolean))].sort();
+    return barangays;
+  };
+
+  // Get unique years for filter
+  const getUniqueYears = () => {
+    const years = new Set();
+    patients.forEach(p => {
+      const record = p.treatmentRecord;
+      const date = record?.appointment_date || record?.created_at;
+      if (date) {
+        const year = new Date(date).getFullYear();
+        years.add(year);
+      }
     });
-    
-    const result = Object.values(grouped);
-    console.log('Grouped patients:', result.length, 'unique patients');
-    return result;
+    return Array.from(years).sort((a, b) => b - a); // Sort descending
+  };
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setBarangayFilter('');
+    setYearFilter('');
+    setMonthFilter('');
+  };
+
+  const fetchAppointmentStatuses = async () => {
+    try {
+      const { data, error } = await getAllAppointments();
+      if (!error && data) {
+        const statusMap = {};
+        data.forEach(apt => {
+          statusMap[apt.id] = apt.status;
+        });
+        setAppointmentStatuses(statusMap);
+      }
+    } catch (err) {
+      console.error('Error fetching appointment statuses:', err);
+    }
   };
 
   const getStaffName = async (userId) => {
@@ -114,214 +310,558 @@ const StaffPatientHistory = () => {
     return 'N/A';
   };
 
-  const handleViewPatient = async (patient) => {
+  const handleView = async (patient) => {
     setSelectedPatient(patient);
-    setPatientRecords(patient.records);
-    // Show the most recent record by default
-    setSelectedRecord(patient.records[0] || null);
-    setIsViewModalOpen(true);
+    setShowModal(true);
     
-    // Fetch appointment statuses and creator names for all records
-    const statuses = {};
-    const creators = {};
-    const userIds = new Set();
-    const doseUserIds = new Set();
-    
-    for (const record of patient.records) {
-      if (record.appointment_id) {
-        try {
-          const { data } = await supabase
-            .from('appointments')
-            .select('status')
-            .eq('id', record.appointment_id)
-            .single();
-          statuses[record.appointment_id] = data?.status || 'N/A';
-        } catch (error) {
-          statuses[record.appointment_id] = 'N/A';
-        }
-      }
+    // Fetch staff names for all dose updated_by fields
+    if (patient.treatmentRecord) {
+      const record = patient.treatmentRecord;
+      const userIds = [
+        record.d0_updated_by,
+        record.d3_updated_by,
+        record.d7_updated_by,
+        record.d14_updated_by,
+        record.d28_30_updated_by
+      ].filter(Boolean);
       
-      if (record.created_by) {
-        userIds.add(record.created_by);
-      }
-
-      // Collect dose updated_by user IDs
-      if (record.d0_updated_by) doseUserIds.add(record.d0_updated_by);
-      if (record.d3_updated_by) doseUserIds.add(record.d3_updated_by);
-      if (record.d7_updated_by) doseUserIds.add(record.d7_updated_by);
-      if (record.d14_updated_by) doseUserIds.add(record.d14_updated_by);
-      if (record.d28_30_updated_by) doseUserIds.add(record.d28_30_updated_by);
-    }
-    
-    // Fetch creator names from profiles
-    if (userIds.size > 0) {
-      try {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, first_name, last_name, username')
-          .in('id', Array.from(userIds));
-        
-        if (profiles) {
-          profiles.forEach(profile => {
-            const fullName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.username || 'Unknown';
-            creators[profile.id] = fullName;
-          });
-        }
-      } catch (error) {
-        console.error('Error fetching creator names:', error);
-      }
-    }
-
-    // Fetch staff names for dose updated_by fields
-    if (doseUserIds.size > 0) {
-      const namePromises = Array.from(doseUserIds)
+      // Fetch all staff names
+      const namePromises = userIds
         .filter(userId => !staffNames[userId])
         .map(userId => getStaffName(userId));
+      
       await Promise.all(namePromises);
     }
+  };
+
+
+  const formatCategoryOfExposure = (category) => {
+    if (!category) return 'N/A';
+    if (typeof category === 'string') {
+      try {
+        category = JSON.parse(category);
+      } catch (e) {
+        return category;
+      }
+    }
+    const categories = [];
+    if (category.category_i) categories.push('Category I');
+    if (category.category_ii) categories.push('Category II');
+    if (category.category_iii) categories.push('Category III');
+    return categories.length > 0 ? categories.join(', ') : 'N/A';
+  };
+
+  const formatTreatmentToBeGiven = (treatment) => {
+    if (!treatment) return 'N/A';
+    if (typeof treatment === 'string') {
+      try {
+        treatment = JSON.parse(treatment);
+      } catch (e) {
+        return treatment;
+      }
+    }
+    const treatments = [];
+    if (treatment.pre_exposure) treatments.push('Pre-Exposure Prophylaxis');
+    if (treatment.post_exposure) treatments.push('Post-Exposure Prophylaxis');
+    return treatments.length > 0 ? treatments.join(', ') : 'N/A';
+  };
+
+  // Export filtered patients to Excel
+  const exportToExcel = () => {
+    const reportPatients = filteredPatients;
     
-    setAppointmentStatuses(statuses);
-    setCreatorNames(creators);
-  };
-
-  const closeViewModal = () => {
-    setIsViewModalOpen(false);
-    setSelectedPatient(null);
-    setPatientRecords([]);
-    setSelectedRecord(null);
-    setAppointmentStatuses({});
-    setCreatorNames({});
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
+    const excelData = reportPatients.map(patient => {
+      const record = patient.treatmentRecord;
+      return {
+        'Patient ID': patient.id,
+        'Name': patient.name,
+        'Age': patient.age,
+        'Gender': patient.gender,
+        'Contact': patient.contact,
+        'Barangay': patient.barangay,
+        'Address': record?.patient_address || 'N/A',
+        'Appointment Date': record?.appointment_date || 'N/A',
+        'Date Bitten': record?.date_bitten || 'N/A',
+        'Biting Animal': record?.biting_animal || 'N/A',
+        'Site of Bite': record?.site_of_bite || 'N/A',
+        'Type of Exposure': record?.type_of_exposure || 'N/A',
+        'Category of Exposure': formatCategoryOfExposure(record?.category_of_exposure),
+        'Vaccine Brand': record?.vaccine_brand_name || 'N/A',
+        'Treatment': formatTreatmentToBeGiven(record?.treatment_to_be_given),
+        'Route': record?.route || 'N/A',
+        'RIG': record?.rig || 'N/A',
+        'D0 Status': record?.d0_status || 'N/A',
+        'D3 Status': record?.d3_status || 'N/A',
+        'D7 Status': record?.d7_status || 'N/A',
+        'D14 Status': record?.d14_status || 'N/A',
+        'D28/30 Status': record?.d28_30_status || 'N/A',
+        'Completion Status': patient.status === 'completed' ? 'Completed' : patient.status === 'incomplete' ? 'Incomplete' : 'Ongoing',
+        'Completed Doses': `${patient.completionDetails.completed}/5`,
+        'Remarks': record?.remarks || 'N/A'
+      };
     });
+
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Patient Report');
+
+    const fileName = `Patient_List_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
   };
 
-  const formatDateTime = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  // Print Vaccine Card
+  const handlePrintVaccineCard = (patient) => {
+    if (!patient || !patient.treatmentRecord) return;
+    
+    const record = patient.treatmentRecord;
+    const doses = [
+      { name: 'D0', date: record.d0_date, status: record.d0_status || 'pending' },
+      { name: 'D3', date: record.d3_date, status: record.d3_status || 'pending' },
+      { name: 'D7', date: record.d7_date, status: record.d7_status || 'pending' },
+      { name: 'D14', date: record.d14_date, status: record.d14_status || 'pending' },
+      { name: 'D28/30', date: record.d28_30_date, status: record.d28_30_status || 'pending' }
+    ];
+
+    const printWindow = window.open('', '_blank');
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Vaccine Card - ${record.patient_name}</title>
+          <style>
+            @media print {
+              @page {
+                size: A4;
+                margin: 15mm;
+              }
+              body { margin: 0; padding: 0; }
+            }
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+            body {
+              font-family: 'Arial', sans-serif;
+              padding: 20px;
+              background: white;
+            }
+            .vaccine-card {
+              max-width: 800px;
+              margin: 0 auto;
+              border: 3px solid #1e40af;
+              border-radius: 12px;
+              padding: 30px;
+              background: linear-gradient(to bottom, #eff6ff 0%, #ffffff 20%);
+              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            .card-header {
+              text-align: center;
+              border-bottom: 3px solid #1e40af;
+              padding-bottom: 20px;
+              margin-bottom: 25px;
+            }
+            .card-header h1 {
+              color: #1e40af;
+              font-size: 28px;
+              font-weight: 700;
+              margin-bottom: 8px;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+            .card-header p {
+              color: #64748b;
+              font-size: 14px;
+              font-weight: 500;
+            }
+            .patient-info {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 20px;
+              margin-bottom: 25px;
+            }
+            .info-section {
+              background: #f8fafc;
+              padding: 15px;
+              border-radius: 8px;
+              border-left: 4px solid #3b82f6;
+            }
+            .info-section h3 {
+              color: #1e40af;
+              font-size: 12px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              margin-bottom: 8px;
+            }
+            .info-section p {
+              color: #1f2937;
+              font-size: 16px;
+              font-weight: 600;
+              word-break: break-word;
+            }
+            .vaccine-details {
+              background: #f0fdf4;
+              padding: 20px;
+              border-radius: 8px;
+              border: 2px solid #22c55e;
+              margin-bottom: 25px;
+            }
+            .vaccine-details h2 {
+              color: #166534;
+              font-size: 18px;
+              font-weight: 700;
+              margin-bottom: 15px;
+              text-align: center;
+              border-bottom: 2px solid #22c55e;
+              padding-bottom: 10px;
+            }
+            .vaccine-info {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 15px;
+              margin-bottom: 15px;
+            }
+            .dose-schedule {
+              margin-top: 20px;
+            }
+            .dose-schedule h3 {
+              color: #166534;
+              font-size: 14px;
+              font-weight: 700;
+              margin-bottom: 12px;
+              text-transform: uppercase;
+            }
+            .dose-table {
+              width: 100%;
+              border-collapse: collapse;
+              background: white;
+              border-radius: 6px;
+              overflow: hidden;
+            }
+            .dose-table thead {
+              background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+              color: white;
+            }
+            .dose-table th {
+              padding: 12px;
+              text-align: left;
+              font-weight: 700;
+              font-size: 12px;
+              text-transform: uppercase;
+            }
+            .dose-table td {
+              padding: 12px;
+              border-bottom: 1px solid #e5e7eb;
+              font-size: 14px;
+            }
+            .dose-table tr:last-child td {
+              border-bottom: none;
+            }
+            .status-badge {
+              display: inline-block;
+              padding: 4px 12px;
+              border-radius: 20px;
+              font-size: 12px;
+              font-weight: 600;
+              text-transform: uppercase;
+            }
+            .status-completed {
+              background: #d1fae5;
+              color: #065f46;
+            }
+            .status-pending {
+              background: #fef3c7;
+              color: #92400e;
+            }
+            .status-missed {
+              background: #fee2e2;
+              color: #991b1b;
+            }
+            .footer {
+              text-align: center;
+              margin-top: 30px;
+              padding-top: 20px;
+              border-top: 2px solid #e5e7eb;
+              color: #64748b;
+              font-size: 12px;
+            }
+            .qr-placeholder {
+              width: 100px;
+              height: 100px;
+              border: 2px dashed #cbd5e1;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              margin: 20px auto;
+              border-radius: 8px;
+              color: #94a3b8;
+              font-size: 10px;
+              text-align: center;
+            }
+            @media print {
+              .vaccine-card {
+                box-shadow: none;
+                border: 3px solid #1e40af;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="vaccine-card">
+            <div class="card-header">
+              <h1>🩺 Rabies Vaccination Card</h1>
+              <p>Official Vaccination Record</p>
+            </div>
+            
+            <div class="patient-info">
+              <div class="info-section">
+                <h3>Patient Name</h3>
+                <p>${record.patient_name || 'N/A'}</p>
+              </div>
+              <div class="info-section">
+                <h3>Patient ID</h3>
+                <p>${patient.id}</p>
+              </div>
+              <div class="info-section">
+                <h3>Contact Number</h3>
+                <p>${record.patient_contact || 'N/A'}</p>
+              </div>
+              <div class="info-section">
+                <h3>Date of Birth / Age</h3>
+                <p>${record.patient_age ? `${record.patient_age} years old` : 'N/A'}</p>
+              </div>
+              <div class="info-section">
+                <h3>Gender</h3>
+                <p>${record.patient_sex || 'N/A'}</p>
+              </div>
+              <div class="info-section">
+                <h3>Address</h3>
+                <p>${record.patient_address || 'N/A'}</p>
+              </div>
+            </div>
+
+            <div class="vaccine-details">
+              <h2>Vaccination Information</h2>
+              <div class="vaccine-info">
+                <div class="info-section" style="background: white; border-left-color: #22c55e;">
+                  <h3>Vaccine Brand</h3>
+                  <p>${record.vaccine_brand_name || 'N/A'}</p>
+                </div>
+                <div class="info-section" style="background: white; border-left-color: #22c55e;">
+                  <h3>Type of Exposure</h3>
+                  <p>${record.type_of_exposure || 'N/A'}</p>
+                </div>
+                <div class="info-section" style="background: white; border-left-color: #22c55e;">
+                  <h3>Category</h3>
+                  <p>${formatCategoryOfExposure(record.category_of_exposure)}</p>
+                </div>
+                <div class="info-section" style="background: white; border-left-color: #22c55e;">
+                  <h3>Treatment</h3>
+                  <p>${formatTreatmentToBeGiven(record.treatment_to_be_given)}</p>
+                </div>
+                <div class="info-section" style="background: white; border-left-color: #22c55e;">
+                  <h3>Route</h3>
+                  <p>${record.route || 'N/A'}</p>
+                </div>
+                <div class="info-section" style="background: white; border-left-color: #22c55e;">
+                  <h3>RIG</h3>
+                  <p>${record.rig || 'N/A'}</p>
+                </div>
+              </div>
+
+              <div class="dose-schedule">
+                <h3>Vaccination Schedule</h3>
+                <table class="dose-table">
+                  <thead>
+                    <tr>
+                      <th>Dose</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${doses.map(dose => `
+                      <tr>
+                        <td><strong>${dose.name}</strong></td>
+                        <td>${dose.date ? new Date(dose.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="footer">
+              <p><strong>Issued Date:</strong> ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+              <p style="margin-top: 10px;">This is an official vaccination record. Please keep this card safe.</p>
+              <div class="qr-placeholder">
+                <div>QR Code<br/>Placeholder</div>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+    
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
   };
 
-  const groupedPatients = getGroupedPatients();
-  
-  // Filter patients based on search term
-  const filteredPatients = groupedPatients.filter(patient => {
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      patient.patientName.toLowerCase().includes(searchLower) ||
-      patient.patientContact?.toLowerCase().includes(searchLower) ||
-      patient.patientAddress?.toLowerCase().includes(searchLower) ||
-      patient.barangay?.toLowerCase().includes(searchLower)
-    );
-  });
+  // Print filtered patients
+  const handlePrint = () => {
+    const printContent = printRef.current;
+    if (!printContent) return;
+    
+    const printWindow = window.open('', '_blank');
+    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map(style => style.outerHTML)
+      .join('');
+    
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Patient Report - Print</title>
+          ${styles}
+          <style>
+            @media print {
+              body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
+              .no-print { display: none !important; }
+              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+              th { background-color: #3b82f6; color: white; font-weight: bold; }
+              .status-completed { color: #059669; font-weight: 600; }
+              .status-incomplete { color: #dc2626; font-weight: 600; }
+              h2 { margin-top: 0; color: #1f2937; }
+              .report-header { margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #e5e7eb; }
+              .report-meta { color: #6b7280; font-size: 14px; margin-top: 5px; }
+            }
+            body { font-family: Arial, sans-serif; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+            th { background-color: #3b82f6; color: white; font-weight: bold; }
+            .status-completed { color: #059669; font-weight: 600; }
+            .status-incomplete { color: #dc2626; font-weight: 600; }
+            h2 { margin-top: 0; color: #1f2937; }
+            .report-header { margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #e5e7eb; }
+            .report-meta { color: #6b7280; font-size: 14px; margin-top: 5px; }
+          </style>
+        </head>
+        <body>
+          ${printContent.innerHTML}
+        </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
+  };
 
   return (
-    <div className="content-section" style={{
-      padding: '24px',
-      backgroundColor: 'white',
-      borderRadius: '12px',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-    }}>
-      <div style={{
-        marginBottom: '32px'
+    <div className="content-section">
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: '24px',
+        flexWrap: 'wrap',
+        gap: '16px'
       }}>
-        <h2 style={{
-          margin: 0,
-          marginBottom: '8px',
-          fontSize: '28px',
-          fontWeight: '800',
-          color: '#0f172a',
-          letterSpacing: '-0.025em'
-        }}>
-          Patient History
-        </h2>
-        <p style={{
-          margin: 0,
-          color: '#64748b',
-          fontSize: '14px'
-        }}>
-          View all patient treatment records and history
-        </p>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '28px', fontWeight: '700', color: '#1f2937' }}>
+            Patient List
+          </h2>
+        </div>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button 
+            onClick={exportToExcel}
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px',
+              padding: '10px 20px',
+              background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '14px',
+              boxShadow: '0 2px 4px rgba(5, 150, 105, 0.2)',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.transform = 'translateY(-1px)';
+              e.target.style.boxShadow = '0 4px 12px rgba(5, 150, 105, 0.3)';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.transform = 'translateY(0)';
+              e.target.style.boxShadow = '0 2px 4px rgba(5, 150, 105, 0.2)';
+            }}
+          >
+            <FaDownload />
+            Export to Excel
+          </button>
+          <button 
+            onClick={handlePrint}
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px',
+              padding: '10px 20px',
+              background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '14px',
+              boxShadow: '0 2px 4px rgba(59, 130, 246, 0.2)',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.transform = 'translateY(-1px)';
+              e.target.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.3)';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.transform = 'translateY(0)';
+              e.target.style.boxShadow = '0 2px 4px rgba(59, 130, 246, 0.2)';
+            }}
+          >
+            <FaPrint />
+            Print
+          </button>
+        </div>
       </div>
-
-      {/* Info and Refresh */}
+      
+      {/* Search and Filter Section */}
       <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '16px'
+        background: 'white',
+        padding: '20px',
+        borderRadius: '12px',
+        marginBottom: '20px',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
       }}>
-        {treatmentRecords.length > 0 && (
-          <p style={{
-            margin: 0,
-            color: '#6b7280',
-            fontSize: '14px'
-          }}>
-            Total records: {treatmentRecords.length} | Patients: {getGroupedPatients().length}
-          </p>
-        )}
-        <button
-          onClick={fetchTreatmentRecords}
-          disabled={loading}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: loading ? '#9ca3af' : '#3b82f6',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            fontSize: '14px',
-            fontWeight: '500',
-            cursor: loading ? 'not-allowed' : 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          🔄 {loading ? 'Loading...' : 'Refresh'}
-        </button>
-      </div>
-
-      {/* Search Bar */}
-      <div style={{
-        marginBottom: '24px'
-      }}>
-        <div style={{
-          position: 'relative',
-          maxWidth: '500px'
-        }}>
-          <FaSearch style={{
-            position: 'absolute',
-            left: '12px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            color: '#6b7280',
-            fontSize: '14px'
-          }} />
+        {/* Search Bar */}
+        <div style={{ marginBottom: '16px' }}>
           <input
             type="text"
-            placeholder="Search by name, contact, address, barangay..."
+            placeholder="Search patients by name, ID, contact, or barangay..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{
               width: '100%',
-              padding: '12px 16px 12px 40px',
+              padding: '12px 16px',
               border: '2px solid #e2e8f0',
-              borderRadius: '10px',
+              borderRadius: '8px',
               fontSize: '14px',
               outline: 'none',
-              transition: 'all 0.2s ease',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+              transition: 'all 0.2s ease'
             }}
             onFocus={(e) => {
               e.target.style.borderColor = '#3b82f6';
@@ -329,365 +869,349 @@ const StaffPatientHistory = () => {
             }}
             onBlur={(e) => {
               e.target.style.borderColor = '#e2e8f0';
-              e.target.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+              e.target.style.boxShadow = 'none';
             }}
           />
         </div>
-      </div>
 
-      {/* Error Message */}
-      {error && (
-        <div style={{
-          padding: '16px',
-          backgroundColor: '#fef2f2',
-          color: '#dc2626',
-          borderRadius: '8px',
-          marginBottom: '24px',
-          border: '1px solid #fecaca'
+        {/* Filter Controls */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '16px', 
+          flexWrap: 'wrap', 
+          alignItems: 'center' 
         }}>
-          <strong>Error:</strong> {error}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <FaFilter style={{ color: '#64748b' }} />
+            <label htmlFor="status-filter" style={{ 
+              fontSize: '14px', 
+              fontWeight: '600', 
+              color: '#374151',
+              marginRight: '8px'
+            }}>
+              Status:
+            </label>
+            <select
+              id="status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{
+                padding: '10px 14px',
+                border: '2px solid #e2e8f0',
+                borderRadius: '8px',
+                fontSize: '14px',
+                cursor: 'pointer',
+                outline: 'none',
+                background: 'white',
+                minWidth: '140px'
+              }}
+            >
+              <option value="all">All Status</option>
+              <option value="completed">Completed</option>
+              <option value="incomplete">Incomplete (Missed)</option>
+              <option value="ongoing">Ongoing</option>
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label htmlFor="barangay-filter" style={{ 
+              fontSize: '14px', 
+              fontWeight: '600', 
+              color: '#374151',
+              marginRight: '8px'
+            }}>
+              Barangay:
+            </label>
+            <select
+              id="barangay-filter"
+              value={barangayFilter}
+              onChange={(e) => setBarangayFilter(e.target.value)}
+              style={{
+                padding: '10px 14px',
+                border: '2px solid #e2e8f0',
+                borderRadius: '8px',
+                fontSize: '14px',
+                cursor: 'pointer',
+                outline: 'none',
+                background: 'white',
+                minWidth: '160px'
+              }}
+            >
+              <option value="">All Barangays</option>
+              {getUniqueBarangays().map(barangay => (
+                <option key={barangay} value={barangay}>{barangay}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label htmlFor="year-filter" style={{ 
+              fontSize: '14px', 
+              fontWeight: '600', 
+              color: '#374151',
+              marginRight: '8px'
+            }}>
+              Year:
+            </label>
+            <select
+              id="year-filter"
+              value={yearFilter}
+              onChange={(e) => setYearFilter(e.target.value)}
+              style={{
+                padding: '10px 14px',
+                border: '2px solid #e2e8f0',
+                borderRadius: '8px',
+                fontSize: '14px',
+                cursor: 'pointer',
+                outline: 'none',
+                background: 'white',
+                minWidth: '120px'
+              }}
+            >
+              <option value="">All Years</option>
+              {getUniqueYears().map(year => (
+                <option key={year} value={year.toString()}>{year}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label htmlFor="month-filter" style={{ 
+              fontSize: '14px', 
+              fontWeight: '600', 
+              color: '#374151',
+              marginRight: '8px'
+            }}>
+              Month:
+            </label>
+            <select
+              id="month-filter"
+              value={monthFilter}
+              onChange={(e) => setMonthFilter(e.target.value)}
+              style={{
+                padding: '10px 14px',
+                border: '2px solid #e2e8f0',
+                borderRadius: '8px',
+                fontSize: '14px',
+                cursor: 'pointer',
+                outline: 'none',
+                background: 'white',
+                minWidth: '140px'
+              }}
+            >
+              <option value="">All Months</option>
+              <option value="1">January</option>
+              <option value="2">February</option>
+              <option value="3">March</option>
+              <option value="4">April</option>
+              <option value="5">May</option>
+              <option value="6">June</option>
+              <option value="7">July</option>
+              <option value="8">August</option>
+              <option value="9">September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
+          </div>
+
           <button
-            onClick={fetchTreatmentRecords}
+            onClick={clearFilters}
             style={{
-              marginLeft: '16px',
-              padding: '6px 12px',
-              backgroundColor: '#dc2626',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
+              padding: '10px 20px',
+              background: '#f3f4f6',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
               cursor: 'pointer',
-              fontSize: '12px'
+              fontSize: '14px',
+              fontWeight: '500',
+              color: '#374151',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.background = '#e5e7eb';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.background = '#f3f4f6';
             }}
           >
-            Retry
+            Clear Filters
           </button>
         </div>
-      )}
-
-      {/* Patients Table */}
-      <div style={{
-        overflowX: 'auto',
-        maxHeight: '70vh',
-        overflowY: 'auto',
-        border: '1px solid #e5e7eb',
-        borderRadius: '16px'
+      </div>
+      
+      {/* Patient Table */}
+      <div className="table-container" ref={printRef} style={{
+        background: 'white',
+        borderRadius: '12px',
+        overflow: 'hidden',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
       }}>
-        {loading ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
-            Loading patient records...
-          </div>
-        ) : error ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#dc2626' }}>
-            {error}
-          </div>
-        ) : (
-          <table style={{
-            width: '100%',
-            borderCollapse: 'collapse',
-            backgroundColor: 'white',
-            borderRadius: '16px',
-            overflow: 'hidden',
-            boxShadow: '0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-            border: '1px solid #e5e7eb'
-          }}>
-            <thead style={{
-              backgroundColor: '#3b82f6',
-              color: 'white',
-              position: 'relative'
-            }}>
+        <table className="patient-table" style={{ 
+          width: '100%', 
+          borderCollapse: 'collapse',
+          fontSize: '13px'
+        }}>
+          <thead>
+            <tr style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)' }}>
+              <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>ID</th>
+              <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Name</th>
+              <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Age</th>
+              <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Contact</th>
+              <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Type of Exposure</th>
+              <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Category</th>
+              <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Vaccine</th>
+              <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Doses</th>
+              <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Status</th>
+              <th className="no-print" style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
               <tr>
-                <th style={{
-                  padding: '24px 20px',
-                  textAlign: 'left',
-                  fontWeight: '700',
-                  fontSize: '13px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.1em',
-                  borderBottom: '2px solid rgba(255, 255, 255, 0.2)',
-                  position: 'relative'
-                }}>
-                  Patient Name
-                </th>
-                <th style={{
-                  padding: '24px 20px',
-                  textAlign: 'left',
-                  fontWeight: '700',
-                  fontSize: '13px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.1em',
-                  borderBottom: '2px solid rgba(255, 255, 255, 0.2)'
-                }}>
-                  Phone
-                </th>
-                <th style={{
-                  padding: '24px 20px',
-                  textAlign: 'left',
-                  fontWeight: '700',
-                  fontSize: '13px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.1em',
-                  borderBottom: '2px solid rgba(255, 255, 255, 0.2)'
-                }}>
-                  Date
-                </th>
-                <th style={{
-                  padding: '24px 20px',
-                  textAlign: 'left',
-                  fontWeight: '700',
-                  fontSize: '13px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.1em',
-                  borderBottom: '2px solid rgba(255, 255, 255, 0.2)'
-                }}>
-                  Address
-                </th>
-                <th style={{
-                  padding: '24px 20px',
-                  textAlign: 'left',
-                  fontWeight: '700',
-                  fontSize: '13px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.1em',
-                  borderBottom: '2px solid rgba(255, 255, 255, 0.2)'
-                }}>
-                  Barangay
-                </th>
-                <th style={{
-                  padding: '24px 20px',
-                  textAlign: 'center',
-                  fontWeight: '700',
-                  fontSize: '13px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.1em',
-                  borderBottom: '2px solid rgba(255, 255, 255, 0.2)'
-                }}>
-                  Records
-                </th>
-                <th style={{
-                  padding: '24px 20px',
-                  textAlign: 'center',
-                  fontWeight: '700',
-                  fontSize: '13px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.1em',
-                  borderBottom: '2px solid rgba(255, 255, 255, 0.2)'
-                }}>
-                  Actions
-                </th>
+                <td colSpan="10" style={{ textAlign: 'center', padding: '40px', border: '1px solid #e5e7eb' }}>
+                  <div style={{ color: '#64748b', fontSize: '16px' }}>Loading patient data...</div>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {filteredPatients.length === 0 ? (
-                <tr>
-                  <td colSpan="7" style={{
-                    padding: '40px',
-                    textAlign: 'center',
-                    color: '#6b7280',
-                    fontSize: '14px'
-                  }}>
-                    {searchTerm ? 
-                      `No patients found matching "${searchTerm}"` : 
-                      treatmentRecords.length === 0 ? 
-                        'No treatment records found in database. Records will appear here once treatment records are created.' :
-                        'No patients found. Check console for details.'
-                    }
-                  </td>
-                </tr>
-              ) : (
-                filteredPatients.map((patient, index) => {
-                  const lastRecord = patient.records[0];
-                  return (
-                    <tr key={index} style={{
-                      borderBottom: '1px solid #f3f4f6',
-                      backgroundColor: index % 2 === 0 ? 'white' : '#f9fafb',
-                      transition: 'background-color 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#f3f4f6';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = index % 2 === 0 ? 'white' : '#f9fafb';
-                    }}>
-                      <td style={{
-                        padding: '20px',
-                        color: '#1f2937',
-                        fontSize: '14px',
-                        fontWeight: '600'
-                      }}>
-                        {patient.patientName}
-                      </td>
-                      <td style={{
-                        padding: '20px',
-                        color: '#374151',
-                        fontSize: '14px'
-                      }}>
-                        {patient.patientContact || 'N/A'}
-                      </td>
-                      <td style={{
-                        padding: '20px',
-                        color: '#374151',
-                        fontSize: '14px'
-                      }}>
-                        {formatDate(lastRecord?.appointment_date || lastRecord?.created_at)}
-                      </td>
-                      <td style={{
-                        padding: '20px',
-                        color: '#374151',
-                        fontSize: '14px'
-                      }}>
-                        {patient.patientAddress || 'N/A'}
-                      </td>
-                      <td style={{
-                        padding: '20px',
-                        color: '#374151',
-                        fontSize: '14px',
-                        textAlign: 'center'
-                      }}>
-                        {patient.barangay || 'N/A'}
-                      </td>
-                      <td style={{
-                        padding: '20px',
-                        textAlign: 'center',
-                        color: '#374151',
-                        fontSize: '14px',
-                        fontWeight: '600'
-                      }}>
-                        <span style={{
-                          backgroundColor: '#3b82f6',
-                          color: 'white',
-                          padding: '4px 12px',
-                          borderRadius: '12px',
-                          fontSize: '12px',
+            ) : filteredPatients.length === 0 ? (
+              <tr>
+                <td colSpan="10" style={{ textAlign: 'center', padding: '40px', border: '1px solid #e5e7eb' }}>
+                  <div style={{ color: '#64748b', fontSize: '16px' }}>No patients scheduled for today</div>
+                </td>
+              </tr>
+            ) : (
+              filteredPatients.map((patient) => {
+                const record = patient.treatmentRecord;
+                return (
+                  <tr key={patient.id} style={{ 
+                    borderBottom: '1px solid #e5e7eb',
+                    transition: 'background 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'white'}>
+                    <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>{patient.id}</td>
+                    <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937', fontWeight: '500' }}>{patient.name}</td>
+                    <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>{patient.age}</td>
+                    <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>{patient.contact}</td>
+                    <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>{record?.type_of_exposure || 'N/A'}</td>
+                    <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>
+                      {formatCategoryOfExposure(record?.category_of_exposure)}
+                    </td>
+                    <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>{record?.vaccine_brand_name || 'N/A'}</td>
+                    <td style={{ padding: '12px', border: '1px solid #e5e7eb', color: '#1f2937' }}>
+                      {patient.completionDetails.completed}/5
+                    </td>
+                    <td style={{ padding: '12px', border: '1px solid #e5e7eb' }}>
+                      <span className={patient.status === 'completed' ? 'status-completed' : patient.status === 'incomplete' ? 'status-incomplete' : 'status-ongoing'}
+                        style={{
+                          color: patient.status === 'completed' ? '#059669' : patient.status === 'incomplete' ? '#dc2626' : '#f59e0b',
                           fontWeight: '600'
                         }}>
-                          {patient.records.length} record{patient.records.length !== 1 ? 's' : ''}
-                        </span>
-                      </td>
-                      <td style={{
-                        padding: '20px',
-                        textAlign: 'center'
-                      }}>
-                        <button
-                          onClick={() => handleViewPatient(patient)}
-                          style={{
-                            padding: '8px 16px',
-                            backgroundColor: '#3b82f6',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '6px',
-                            fontSize: '13px',
-                            fontWeight: '500',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            transition: 'all 0.2s ease'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.target.style.backgroundColor = '#2563eb';
-                            e.target.style.transform = 'translateY(-1px)';
-                            e.target.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.target.style.backgroundColor = '#3b82f6';
-                            e.target.style.transform = 'translateY(0)';
-                            e.target.style.boxShadow = 'none';
-                          }}
-                        >
-                          <FaEye size={12} />
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        )}
+                        {patient.status === 'completed' ? 'Completed' : patient.status === 'incomplete' ? 'Incomplete' : 'Ongoing'}
+                      </span>
+                    </td>
+                    <td className="no-print" style={{ padding: '12px', border: '1px solid #e5e7eb' }}>
+                      <button 
+                        onClick={() => handleView(patient)}
+                        style={{
+                          padding: '6px 12px',
+                          background: '#3b82f6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.background = '#2563eb';
+                          e.target.style.transform = 'translateY(-1px)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.background = '#3b82f6';
+                          e.target.style.transform = 'translateY(0)';
+                        }}
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
 
-      {/* View Patient Records Modal */}
-      {isViewModalOpen && selectedPatient && (
+      {/* Patient Details Modal */}
+      {showModal && selectedPatient && (
         <div style={{
           position: 'fixed',
           top: 0,
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          backdropFilter: 'blur(4px)',
           display: 'flex',
-          justifyContent: 'center',
           alignItems: 'center',
+          justifyContent: 'center',
           zIndex: 1000,
           padding: '20px'
-        }} onClick={closeViewModal}>
+        }} onClick={() => setShowModal(false)}>
           <div style={{
             backgroundColor: 'white',
-            borderRadius: '12px',
+            borderRadius: '16px',
             padding: '30px',
-            maxWidth: '800px',
+            maxWidth: '900px',
             width: '100%',
             maxHeight: '90vh',
             overflowY: 'auto',
-            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
           }} onClick={(e) => e.stopPropagation()}>
-            {/* Modal Header */}
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              marginBottom: '20px',
+              marginBottom: '24px',
               borderBottom: '2px solid #e5e7eb',
-              paddingBottom: '15px'
+              paddingBottom: '16px'
             }}>
-              <h2 style={{ margin: 0, color: '#1f2937' }}>Patient Details</h2>
+              <h2 style={{ margin: 0, color: '#1f2937', fontSize: '24px', fontWeight: '700' }}>
+                Patient Details
+              </h2>
               <button
-                onClick={closeViewModal}
+                onClick={() => setShowModal(false)}
                 style={{
                   background: 'none',
                   border: 'none',
                   fontSize: '24px',
                   cursor: 'pointer',
-                  color: '#6b7280'
+                  color: '#6b7280',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '6px',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = '#f3f4f6';
+                  e.target.style.color = '#1f2937';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = 'none';
+                  e.target.style.color = '#6b7280';
                 }}
               >
-                ×
+                <FaTimes />
               </button>
             </div>
 
-            {/* Record Selector */}
-            {patientRecords.length > 1 && (
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px', display: 'block' }}>
-                  Select Record:
-                </label>
-                <select
-                  value={selectedRecord?.id || ''}
-                  onChange={(e) => {
-                    const record = patientRecords.find(r => r.id === e.target.value);
-                    setSelectedRecord(record || null);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '2px solid #e5e7eb',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    outline: 'none'
-                  }}
-                >
-                  {patientRecords.map((record, index) => (
-                    <option key={record.id || index} value={record.id || index}>
-                      Record {index + 1} - {formatDate(record.appointment_date || record.created_at)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {selectedRecord && (() => {
-              const record = selectedRecord;
+            {selectedPatient.treatmentRecord && (() => {
+              const record = selectedPatient.treatmentRecord;
               const doses = [
                 { 
                   number: 'D0', 
@@ -728,117 +1252,205 @@ const StaffPatientHistory = () => {
 
               return (
                 <div>
-                  {/* Patient Information */}
-                  <div style={{ marginBottom: '25px' }}>
-                    <h3 style={{ margin: '0 0 15px 0', color: '#374151', fontSize: '18px' }}>Patient Information</h3>
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(2, 1fr)',
-                      gap: '15px'
-                    }}>
-                      <div>
-                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Name</label>
-                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.patient_name || 'N/A'}</p>
+                  {/* Status Badge */}
+                  <div style={{
+                    marginBottom: '24px',
+                    padding: '16px',
+                    borderRadius: '12px',
+                    background: selectedPatient.status === 'completed' 
+                      ? 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)'
+                      : selectedPatient.status === 'incomplete'
+                      ? 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)'
+                      : 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                    border: `2px solid ${selectedPatient.status === 'completed' ? '#10b981' : selectedPatient.status === 'incomplete' ? '#ef4444' : '#f59e0b'}`,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <div>
+                      <div style={{
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        color: selectedPatient.status === 'completed' ? '#065f46' : selectedPatient.status === 'incomplete' ? '#991b1b' : '#92400e',
+                        marginBottom: '4px'
+                      }}>
+                        Treatment Status
                       </div>
-                      <div>
-                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Age</label>
-                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.patient_age || 'N/A'}</p>
+                      <div style={{
+                        fontSize: '20px',
+                        fontWeight: '700',
+                        color: selectedPatient.status === 'completed' ? '#059669' : selectedPatient.status === 'incomplete' ? '#dc2626' : '#f59e0b',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        {selectedPatient.status === 'completed' ? <FaCheckCircle /> : selectedPatient.status === 'incomplete' ? <FaExclamationCircle /> : <FaClock />}
+                        {selectedPatient.status === 'completed' ? 'Completed' : selectedPatient.status === 'incomplete' ? 'Incomplete' : 'Ongoing'}
                       </div>
-                      <div>
-                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Gender</label>
-                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.patient_sex || 'N/A'}</p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '14px', color: selectedPatient.status === 'completed' ? '#065f46' : selectedPatient.status === 'incomplete' ? '#991b1b' : '#92400e' }}>
+                        Doses Completed
                       </div>
-                      <div>
-                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Contact</label>
-                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.patient_contact || 'N/A'}</p>
-                      </div>
-                      <div style={{ gridColumn: '1 / -1' }}>
-                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Address</label>
-                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.patient_address || 'N/A'}</p>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Appointment Date</label>
-                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.appointment_date || 'N/A'}</p>
+                      <div style={{
+                        fontSize: '24px',
+                        fontWeight: '700',
+                        color: selectedPatient.status === 'completed' ? '#059669' : selectedPatient.status === 'incomplete' ? '#dc2626' : '#f59e0b'
+                      }}>
+                        {selectedPatient.completionDetails.completed}/{selectedPatient.completionDetails.total}
                       </div>
                     </div>
                   </div>
 
-                  {/* Additional Information */}
+                  {/* Patient Information */}
                   <div style={{ marginBottom: '25px' }}>
-                    <h3 style={{ margin: '0 0 15px 0', color: '#374151', fontSize: '18px' }}>Additional Information</h3>
+                    <h3 style={{ 
+                      margin: '0 0 16px 0', 
+                      color: '#374151', 
+                      fontSize: '18px',
+                      fontWeight: '700',
+                      borderBottom: '2px solid #3b82f6',
+                      paddingBottom: '8px'
+                    }}>
+                      Patient Information
+                    </h3>
                     <div style={{
                       display: 'grid',
                       gridTemplateColumns: 'repeat(2, 1fr)',
-                      gap: '15px'
+                      gap: '16px'
                     }}>
                       <div>
-                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Biting Animal</label>
-                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.biting_animal || 'N/A'}</p>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Name</label>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>{record.patient_name || 'N/A'}</p>
                       </div>
                       <div>
-                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Date Bitten</label>
-                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.date_bitten || 'N/A'}</p>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Age</label>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>{record.patient_age || 'N/A'}</p>
                       </div>
                       <div>
-                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Type of Exposure</label>
-                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.type_of_exposure || 'N/A'}</p>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gender</label>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>{record.patient_sex || 'N/A'}</p>
                       </div>
                       <div>
-                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Category of Exposure</label>
-                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>
-                          {record.category_of_exposure ? (() => {
-                            const categories = [];
-                            if (typeof record.category_of_exposure === 'object') {
-                              if (record.category_of_exposure.category_i) categories.push('Category I');
-                              if (record.category_of_exposure.category_ii) categories.push('Category II');
-                              if (record.category_of_exposure.category_iii) categories.push('Category III');
-                            }
-                            return categories.length > 0 ? categories.join(', ') : 'N/A';
-                          })() : 'N/A'}
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Contact</label>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>{record.patient_contact || 'N/A'}</p>
+                      </div>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Address</label>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>{record.patient_address || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Appointment Date</label>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>{record.appointment_date ? new Date(record.appointment_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Diagnosis Information */}
+                  <div style={{ marginBottom: '25px' }}>
+                    <h3 style={{ 
+                      margin: '0 0 16px 0', 
+                      color: '#374151', 
+                      fontSize: '18px',
+                      fontWeight: '700',
+                      borderBottom: '2px solid #3b82f6',
+                      paddingBottom: '8px'
+                    }}>
+                      Diagnosis Information
+                    </h3>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, 1fr)',
+                      gap: '16px'
+                    }}>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Biting Animal</label>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>{record.biting_animal || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Date Bitten</label>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>{record.date_bitten || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Site of Bite</label>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>{record.site_of_bite || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Type of Exposure</label>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>{record.type_of_exposure || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Category of Exposure</label>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>
+                          {formatCategoryOfExposure(record.category_of_exposure)}
                         </p>
                       </div>
                       <div>
-                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Vaccine Brand</label>
-                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.vaccine_brand_name || 'N/A'}</p>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Vaccine Brand</label>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>{record.vaccine_brand_name || 'N/A'}</p>
                       </div>
                       <div>
-                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>RIG</label>
-                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.rig || 'N/A'}</p>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Treatment</label>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>
+                          {formatTreatmentToBeGiven(record.treatment_to_be_given)}
+                        </p>
                       </div>
                       <div>
-                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>Route</label>
-                        <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#1f2937' }}>{record.route || 'N/A'}</p>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Route</label>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>{record.route || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>RIG</label>
+                        <p style={{ margin: '6px 0 0 0', fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>{record.rig || 'N/A'}</p>
                       </div>
                     </div>
                   </div>
 
                   {/* Dose Information */}
                   <div>
-                    <h3 style={{ margin: '0 0 15px 0', color: '#374151', fontSize: '18px' }}>Dose Information</h3>
+                    <h3 style={{ 
+                      margin: '0 0 16px 0', 
+                      color: '#374151', 
+                      fontSize: '18px',
+                      fontWeight: '700',
+                      borderBottom: '2px solid #3b82f6',
+                      paddingBottom: '8px'
+                    }}>
+                      Dose Information
+                    </h3>
                     <div style={{ overflowX: 'auto' }}>
                       <table style={{
                         width: '100%',
                         borderCollapse: 'collapse',
-                        fontSize: '14px'
+                        fontSize: '14px',
+                        background: 'white',
+                        borderRadius: '8px',
+                        overflow: 'hidden',
+                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
                       }}>
                         <thead>
-                          <tr style={{ backgroundColor: '#f9fafb' }}>
-                            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #e5e7eb' }}>Dose</th>
-                            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #e5e7eb' }}>Date</th>
-                            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #e5e7eb' }}>Status</th>
-                            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #e5e7eb' }}>Updated By</th>
-                            <th style={{ padding: '10px', textAlign: 'left', border: '1px solid #e5e7eb' }}>Updated At</th>
+                          <tr style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)' }}>
+                            <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600' }}>Dose</th>
+                            <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600' }}>Date</th>
+                            <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600' }}>Status</th>
+                            <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600' }}>Updated By</th>
+                            <th style={{ padding: '12px', textAlign: 'left', color: 'white', fontWeight: '600' }}>Updated At</th>
                           </tr>
                         </thead>
                         <tbody>
                           {doses.map((dose, index) => (
-                            <tr key={index}>
-                              <td style={{ padding: '10px', border: '1px solid #e5e7eb' }}>{dose.number}</td>
-                              <td style={{ padding: '10px', border: '1px solid #e5e7eb' }}>{dose.date || 'N/A'}</td>
-                              <td style={{ padding: '10px', border: '1px solid #e5e7eb' }}>
+                            <tr key={index} style={{
+                              borderBottom: '1px solid #e5e7eb',
+                              transition: 'background 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'white'}>
+                              <td style={{ padding: '12px', fontWeight: '600', color: '#1f2937' }}>{dose.number}</td>
+                              <td style={{ padding: '12px', color: '#1f2937' }}>{dose.date ? new Date(dose.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}</td>
+                              <td style={{ padding: '12px' }}>
                                 <span style={{
-                                  padding: '4px 8px',
-                                  borderRadius: '4px',
+                                  padding: '6px 12px',
+                                  borderRadius: '20px',
                                   fontSize: '12px',
                                   fontWeight: '600',
                                   backgroundColor: dose.status === 'completed' ? '#d1fae5' : 
@@ -846,11 +1458,11 @@ const StaffPatientHistory = () => {
                                   color: dose.status === 'completed' ? '#065f46' : 
                                          dose.status === 'missed' ? '#991b1b' : '#92400e'
                                 }}>
-                                  {dose.status.charAt(0).toUpperCase() + dose.status.slice(1)}
+                                  {dose.status ? dose.status.charAt(0).toUpperCase() + dose.status.slice(1) : 'Pending'}
                                 </span>
                               </td>
-                              <td style={{ padding: '10px', border: '1px solid #e5e7eb' }}>{dose.updatedBy}</td>
-                              <td style={{ padding: '10px', border: '1px solid #e5e7eb' }}>
+                              <td style={{ padding: '12px', color: '#1f2937' }}>{dose.updatedBy}</td>
+                              <td style={{ padding: '12px', color: '#64748b', fontSize: '13px' }}>
                                 {dose.updatedAt ? new Date(dose.updatedAt).toLocaleString() : 'N/A'}
                               </td>
                             </tr>
@@ -862,10 +1474,10 @@ const StaffPatientHistory = () => {
                 </div>
               );
             })()}
-
           </div>
         </div>
       )}
+
     </div>
   );
 };

@@ -661,46 +661,6 @@ const AppointmentList = () => {
                           <FaEye size={12} />
                           View Details
                         </button>
-                        
-                        {appointment.status !== 'confirmed' && appointment.status !== 'completed' && (
-                          <button
-                            onClick={() => {
-                              handleConfirmAppointment(
-                                appointment.id,
-                                appointment.patient_email,
-                                appointment.patient_name
-                              );
-                            }}
-                            style={{
-                              padding: '8px 16px',
-                              background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '8px',
-                              fontSize: '13px',
-                              fontWeight: '600',
-                              cursor: 'pointer',
-                              transition: 'all 0.2s ease',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              boxShadow: '0 2px 4px rgba(59, 130, 246, 0.2)'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.target.style.background = 'linear-gradient(135deg, #2563eb 0%, #1e40af 100%)';
-                              e.target.style.transform = 'translateY(-1px)';
-                              e.target.style.boxShadow = '0 4px 8px rgba(59, 130, 246, 0.3)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.target.style.background = 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)';
-                              e.target.style.transform = 'translateY(0)';
-                              e.target.style.boxShadow = '0 2px 4px rgba(59, 130, 246, 0.2)';
-                            }}
-                          >
-                            <FaCheck size={12} />
-                            Confirm
-                          </button>
-                        )}
                       </div>
                     </td>
                   </tr>

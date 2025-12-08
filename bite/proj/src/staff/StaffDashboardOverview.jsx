@@ -1,43 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { FaUsers, FaCalendarAlt, FaExclamationTriangle, FaSyringe } from 'react-icons/fa';
+import { getAllAppointments, getTreatmentRecords } from '../supabase';
 
 const StaffDashboardOverview = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [patientBookings, setPatientBookings] = useState({});
+  const [loading, setLoading] = useState(true);
   
-  // Sample patient booking data for August 2025
-  const patientBookings = {
-    '2025-08-01': 0,
-    '2025-08-02': 0,
-    '2025-08-03': 0,
-    '2025-08-04': 20,
-    '2025-08-05': 0,
-    '2025-08-06': 0,
-    '2025-08-07': 20,
-    '2025-08-08': 0,
-    '2025-08-09': 0,
-    '2025-08-10': 0,
-    '2025-08-11': 0,
-    '2025-08-12': 0,
-    '2025-08-13': 0,
-    '2025-08-14': 0,
-    '2025-08-15': 0,
-    '2025-08-16': 0,
-    '2025-08-17': 0,
-    '2025-08-18': 0,
-    '2025-08-19': 0,
-    '2025-08-20': 0,
-    '2025-08-21': 0,
-    '2025-08-22': 0,
-    '2025-08-23': 0,
-    '2025-08-24': 0,
-    '2025-08-25': 0,
-    '2025-08-26': 0,
-    '2025-08-27': 0,
-    '2025-08-28': 0,
-    '2025-08-29': 0,
-    '2025-08-30': 0,
-    '2025-08-31': 0
-  };
+  // Dashboard statistics
+  const [totalPatients, setTotalPatients] = useState(0);
+  const [totalAppointments, setTotalAppointments] = useState(0);
+  const [missedAppointments, setMissedAppointments] = useState(0);
+  const [completedVaccinations, setCompletedVaccinations] = useState(0);
+  const [statsLoading, setStatsLoading] = useState(true);
 
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
@@ -62,6 +37,99 @@ const StaffDashboardOverview = () => {
 
   const goToNextMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  };
+
+  // Fetch appointments and count bookings per date
+  useEffect(() => {
+    fetchAppointments();
+    fetchDashboardStats();
+  }, []);
+
+  const fetchAppointments = useCallback(async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await getAllAppointments();
+      
+      if (error) {
+        console.error('Error fetching appointments:', error);
+        setPatientBookings({});
+      } else {
+        processAppointmentData(data || []);
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      setPatientBookings({});
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Fetch dashboard statistics
+  const fetchDashboardStats = useCallback(async () => {
+    try {
+      setStatsLoading(true);
+      
+      // Fetch all data in parallel
+      const [
+        appointmentsResult,
+        treatmentRecordsResult
+      ] = await Promise.all([
+        getAllAppointments(),
+        getTreatmentRecords()
+      ]);
+
+      // Total Appointments
+      const appointments = appointmentsResult.data || [];
+      setTotalAppointments(appointments.length);
+
+      // Missed Appointments (appointments with status 'missed' or 'cancelled')
+      const missed = appointments.filter(apt => 
+        apt.status === 'missed' || apt.status === 'cancelled'
+      ).length;
+      setMissedAppointments(missed);
+
+      // Total Patients (from treatment records)
+      const treatmentRecords = treatmentRecordsResult.data || [];
+      setTotalPatients(treatmentRecords.length);
+
+      // Completed Vaccinations (treatment records where all 5 doses are completed)
+      const completed = treatmentRecords.filter(record => {
+        const doses = [
+          record.d0_status,
+          record.d3_status,
+          record.d7_status,
+          record.d14_status,
+          record.d28_30_status
+        ];
+        return doses.every(status => status === 'completed');
+      }).length;
+      setCompletedVaccinations(completed);
+
+    } catch (err) {
+      console.error('Error fetching dashboard stats:', err);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  const processAppointmentData = (appointments) => {
+    const bookings = {};
+    
+    appointments.forEach(apt => {
+      if (apt.appointment_date) {
+        // Format date as YYYY-MM-DD
+        const date = new Date(apt.appointment_date);
+        if (!isNaN(date.getTime())) {
+          const year = date.getFullYear();
+          const month = date.getMonth();
+          const day = date.getDate();
+          const dateKey = formatDate(year, month, day);
+          bookings[dateKey] = (bookings[dateKey] || 0) + 1;
+        }
+      }
+    });
+    
+    setPatientBookings(bookings);
   };
 
 
@@ -89,8 +157,17 @@ const StaffDashboardOverview = () => {
           <div className="day-content">
             <span className="day-number">{day}</span>
             {patientCount > 0 && (
-              <div className="patient-count">
-                {patientCount} patients
+              <div className="patient-count" style={{
+                fontSize: '12px',
+                fontWeight: '600',
+                color: '#3b82f6',
+                backgroundColor: '#eff6ff',
+                padding: '4px 6px',
+                borderRadius: '4px',
+                marginTop: '4px',
+                textAlign: 'center'
+              }}>
+                {patientCount} {patientCount === 1 ? 'booked' : 'booked'}
               </div>
             )}
           </div>
@@ -153,7 +230,9 @@ const StaffDashboardOverview = () => {
                <FaUsers size={20} />
              </div>
              <h3 style={{ margin: '0 0 8px 0', fontSize: '14px', color: 'white' }}>Total Patients</h3>
-             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>0</p>
+             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>
+               {statsLoading ? '...' : totalPatients.toLocaleString()}
+             </p>
            </div>
           
                      <div style={{
@@ -183,7 +262,9 @@ const StaffDashboardOverview = () => {
                <FaCalendarAlt size={20} />
              </div>
              <h3 style={{ margin: '0 0 8px 0', fontSize: '14px', color: 'white' }}>Total Appointments</h3>
-             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>0</p>
+             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>
+               {statsLoading ? '...' : totalAppointments.toLocaleString()}
+             </p>
            </div>
           
                      <div style={{
@@ -213,7 +294,9 @@ const StaffDashboardOverview = () => {
                <FaExclamationTriangle size={20} />
              </div>
              <h3 style={{ margin: '0 0 8px 0', fontSize: '14px', color: 'white' }}>Missed Appointments</h3>
-             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>0</p>
+             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>
+               {statsLoading ? '...' : missedAppointments.toLocaleString()}
+             </p>
            </div>
           
                      <div style={{
@@ -243,7 +326,9 @@ const StaffDashboardOverview = () => {
                <FaSyringe size={20} />
              </div>
              <h3 style={{ margin: '0 0 8px 0', fontSize: '14px', color: 'white' }}>Completed Vaccination</h3>
-             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>0</p>
+             <p style={{ margin: '0', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>
+               {statsLoading ? '...' : completedVaccinations.toLocaleString()}
+             </p>
            </div>
         </div>
       </div>

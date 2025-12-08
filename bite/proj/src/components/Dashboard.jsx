@@ -1,11 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { FaUsers, FaCalendarAlt, FaExclamationTriangle, FaSyringe, FaUserMd } from 'react-icons/fa';
-import { getAllAppointments } from '../supabase';
+import { getAllAppointments, getTreatmentRecords, supabase } from '../supabase';
 
 const Dashboard = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [patientBookings, setPatientBookings] = useState({});
   const [loading, setLoading] = useState(true);
+  
+  // Dashboard statistics
+  const [totalPatients, setTotalPatients] = useState(0);
+  const [totalAppointments, setTotalAppointments] = useState(0);
+  const [missedAppointments, setMissedAppointments] = useState(0);
+  const [completedVaccinations, setCompletedVaccinations] = useState(0);
+  const [totalStaff, setTotalStaff] = useState(0);
+  const [statsLoading, setStatsLoading] = useState(true);
 
   // Helper function to format date as YYYY-MM-DD
   const formatDate = (year, month, day) => {
@@ -17,9 +25,10 @@ const Dashboard = () => {
   // Fetch appointments and count bookings per date
   useEffect(() => {
     fetchAppointments();
+    fetchDashboardStats();
   }, []);
 
-  const fetchAppointments = async () => {
+  const fetchAppointments = useCallback(async () => {
     try {
       setLoading(true);
       const { data, error } = await getAllAppointments();
@@ -36,7 +45,63 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Fetch dashboard statistics
+  const fetchDashboardStats = useCallback(async () => {
+    try {
+      setStatsLoading(true);
+      
+      // Fetch all data in parallel
+      const [
+        appointmentsResult,
+        treatmentRecordsResult,
+        staffResult
+      ] = await Promise.all([
+        getAllAppointments(),
+        getTreatmentRecords(),
+        supabase
+          .from('profiles')
+          .select('id', { count: 'exact', head: true })
+          .eq('role', 'staff')
+      ]);
+
+      // Total Appointments
+      const appointments = appointmentsResult.data || [];
+      setTotalAppointments(appointments.length);
+
+      // Missed Appointments (appointments with status 'missed' or 'cancelled')
+      const missed = appointments.filter(apt => 
+        apt.status === 'missed' || apt.status === 'cancelled'
+      ).length;
+      setMissedAppointments(missed);
+
+      // Total Patients (from treatment records)
+      const treatmentRecords = treatmentRecordsResult.data || [];
+      setTotalPatients(treatmentRecords.length);
+
+      // Completed Vaccinations (treatment records where all 5 doses are completed)
+      const completed = treatmentRecords.filter(record => {
+        const doses = [
+          record.d0_status,
+          record.d3_status,
+          record.d7_status,
+          record.d14_status,
+          record.d28_30_status
+        ];
+        return doses.every(status => status === 'completed');
+      }).length;
+      setCompletedVaccinations(completed);
+
+      // Total Staff
+      setTotalStaff(staffResult.count || 0);
+
+    } catch (err) {
+      console.error('Error fetching dashboard stats:', err);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
 
   const processAppointmentData = (appointments) => {
     const bookings = {};
@@ -172,7 +237,9 @@ const Dashboard = () => {
               <FaUsers size={24} />
             </div>
             <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', color: 'white' }}>Total Patients</h3>
-            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>0</p>
+            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>
+              {statsLoading ? '...' : totalPatients.toLocaleString()}
+            </p>
           </div>
           
           <div style={{
@@ -200,7 +267,9 @@ const Dashboard = () => {
               <FaCalendarAlt size={24} />
             </div>
             <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', color: 'white' }}>Total Appointments</h3>
-            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>0</p>
+            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>
+              {statsLoading ? '...' : totalAppointments.toLocaleString()}
+            </p>
           </div>
           
           <div style={{
@@ -228,7 +297,9 @@ const Dashboard = () => {
               <FaExclamationTriangle size={24} />
             </div>
             <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', color: 'white' }}>Missed Appointments</h3>
-            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>0</p>
+            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>
+              {statsLoading ? '...' : missedAppointments.toLocaleString()}
+            </p>
           </div>
           
           <div style={{
@@ -256,7 +327,9 @@ const Dashboard = () => {
               <FaSyringe size={24} />
             </div>
             <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', color: 'white' }}>Completed Vaccination</h3>
-            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>0</p>
+            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>
+              {statsLoading ? '...' : completedVaccinations.toLocaleString()}
+            </p>
           </div>
           
           <div style={{
@@ -284,7 +357,9 @@ const Dashboard = () => {
               <FaUserMd size={24} />
             </div>
             <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', color: 'white' }}>Total Staff</h3>
-            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>0</p>
+            <p style={{ margin: '0 0 15px 0', fontSize: '24px', fontWeight: 'bold', color: 'white' }}>
+              {statsLoading ? '...' : totalStaff.toLocaleString()}
+            </p>
           </div>
         </div>
       </div>

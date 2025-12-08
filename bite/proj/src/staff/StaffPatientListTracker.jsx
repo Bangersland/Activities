@@ -258,11 +258,20 @@ const StaffPatientListTracker = () => {
   const fetchDoseStatistics = async () => {
     setLoading(true);
     try {
-      // Fetch all patients for each dose and filter them based on rules
+      // Fetch all patients for each dose in parallel instead of sequentially
       const stats = {};
       
+      const dosePromises = [];
       for (let doseNumber = 1; doseNumber <= 6; doseNumber++) {
-        const { data, error } = await getPatientsByDose(doseNumber, true);
+        dosePromises.push(getPatientsByDose(doseNumber, true).then(result => ({ doseNumber, result })));
+      }
+      
+      // Wait for all doses to be fetched in parallel
+      const doseResults = await Promise.all(dosePromises);
+      
+      // Process results
+      doseResults.forEach(({ doseNumber, result }) => {
+        const { data, error } = result;
         if (!error && data) {
           const filteredPatients = filterPatientsByDoseRules(data, doseNumber);
           
@@ -290,7 +299,7 @@ const StaffPatientListTracker = () => {
         } else {
           stats[doseNumber] = { pending: 0, completed: 0, missed: 0, total: 0 };
         }
-      }
+      });
       
       setDoseStats(stats);
     } catch (error) {
@@ -396,6 +405,22 @@ const StaffPatientListTracker = () => {
       missed: { backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #ef4444' }
     };
     return styles[status] || styles.pending;
+  };
+
+  const formatCategoryOfExposure = (category) => {
+    if (!category) return 'N/A';
+    if (typeof category === 'string') {
+      try {
+        category = JSON.parse(category);
+      } catch (e) {
+        return category;
+      }
+    }
+    const categories = [];
+    if (category.category_i) categories.push('Category I');
+    if (category.category_ii) categories.push('Category II');
+    if (category.category_iii) categories.push('Category III');
+    return categories.length > 0 ? categories.join(', ') : 'N/A';
   };
 
   return (
@@ -690,28 +715,8 @@ const StaffPatientListTracker = () => {
                                     const status = patient.doseStatus || 'pending';
                                     const badgeStyle = getStatusBadgeStyle(status);
                                     
-                                    // Format category of exposure (JSONB field)
-                                    let categoryOfExposure = 'N/A';
-                                    if (patient.category_of_exposure) {
-                                      if (typeof patient.category_of_exposure === 'string') {
-                                        try {
-                                          const parsed = JSON.parse(patient.category_of_exposure);
-                                          if (Array.isArray(parsed)) {
-                                            categoryOfExposure = parsed.join(', ');
-                                          } else if (typeof parsed === 'object') {
-                                            categoryOfExposure = Object.values(parsed).filter(v => v).join(', ');
-                                          } else {
-                                            categoryOfExposure = parsed;
-                                          }
-                                        } catch {
-                                          categoryOfExposure = patient.category_of_exposure;
-                                        }
-                                      } else if (Array.isArray(patient.category_of_exposure)) {
-                                        categoryOfExposure = patient.category_of_exposure.join(', ');
-                                      } else if (typeof patient.category_of_exposure === 'object') {
-                                        categoryOfExposure = Object.values(patient.category_of_exposure).filter(v => v).join(', ');
-                                      }
-                                    }
+                                    // Format category of exposure using the proper formatter
+                                    const categoryOfExposure = formatCategoryOfExposure(patient.category_of_exposure);
                                     
                                     return (
                                       <tr 
